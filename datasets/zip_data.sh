@@ -8,16 +8,6 @@
 OUTPUT_SCENES_DIR=ours_default_scenes_zxc #prm
 OUTPUT_DATA_DIR=ours_default_data_zxc 
 
-mkdir $OUTPUT_SCENES_DIR
-
-# This script is purely sequential but it is recommended to parallelize the
-# following loop, which generates the simulation data.
-for seed in `seq 1 7`; do #prm
-        python create_physics_scenes.py --output $OUTPUT_SCENES_DIR \
-                                        --seed $seed \
-                                        --default-viscosity \
-                                        --default-density
-done
 
 # 下面这个py用来压缩数据，上面那个用来生成数据 zxc。下面这个的输入input注意
 # Transforms and compresses the data such that it can be used for training.

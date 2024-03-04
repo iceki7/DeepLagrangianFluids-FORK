@@ -11,7 +11,7 @@ import msgpack_numpy
 msgpack_numpy.patch()
 
 
-class PhysicsSimDataFlow(dataflow.RNGDataFlow):
+class PhysicsSimDataFlow(dataflow.RNGDataFlow):#zxc 这个对象送入外部库dataflow
     """Data flow for msgpacks generated from SplishSplash simulations.
     """
 
@@ -34,7 +34,7 @@ class PhysicsSimDataFlow(dataflow.RNGDataFlow):
         for file_i in files_idxs:
             # read all data from file
             with open(self.files[file_i], 'rb') as f:
-                data = msgpack.unpackb(decompressor.decompress(f.read()),
+                data = msgpack.unpackb(decompressor.decompress(f.read()),#zxc 这里是读入数据
                                        raw=False)
 
             data_idxs = np.arange(len(data) - self.window + 1)
@@ -67,7 +67,7 @@ class PhysicsSimDataFlow(dataflow.RNGDataFlow):
                     item = data[data_i + time_i]
 
                     for k in ('pos', 'vel'):
-                        if self.random_rotation:
+                        if self.random_rotation:#zxc
                             sample[k + str(time_i)] = np.matmul(item[k], rand_R)
                         else:
                             sample[k + str(time_i)] = item[k]
@@ -131,7 +131,7 @@ def read_data(files=None,
     if num_workers > 1:
         df = dataflow.MultiProcessRunnerZMQ(df, num_proc=num_workers)
 
-    df = dataflow.BatchData(df, batch_size=batch_size, use_list=True)
+    df = dataflow.BatchData(df, batch_size=batch_size, use_list=True)#zxc batchdata是封装的
 
     if cache_data:
         df = dataflow.CacheData(df)

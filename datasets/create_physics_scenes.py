@@ -34,7 +34,7 @@ MAX_RIGID_START_VELOCITY_Y = 2.0
 # default parameters for simulation
 default_configuration = {
     "pause": False,
-    "stopAt": 16.0,
+    "stopAt": 2.0,#prm
     "particleRadius": 0.025,
     "numberOfStepsPerRenderUpdate": 1,
     "density0": 1000,
@@ -43,9 +43,9 @@ default_configuration = {
     "cflMethod": 0,
     "cflFactor": 1,
     "cflMaxTimeStepSize": 0.005,
-    "maxIterations": 100,
+    "maxIterations": 100,#prm
     "maxError": 0.01,
-    "maxIterationsV": 100,
+    "maxIterationsV": 100,#prm
     "maxErrorV": 0.1,
     "stiffness": 50000,
     "exponent": 7,
@@ -66,7 +66,7 @@ default_fluid = {
     "surfaceTensionMethod": 0,
     "viscosity": 0.01,
     "viscosityMethod": 3,
-    "viscoMaxIter": 200,
+    "viscoMaxIter": 200,#prm
     "viscoMaxError": 0.05
 }
 
@@ -219,7 +219,7 @@ def find_valid_fluid_start_positions(box_rasterized, fluid_rasterized):
 
 
 def run_simulator(scene, output_dir):
-    """Runs the simulator for the specified scene file"""
+    """Runs the simulator for the specified scene file"""#zxc
     with tempfile.TemporaryDirectory() as tmpdir:
         status = subprocess.run([
             SIMULATOR_BIN, '--no-cache', '--no-gui', '--no-initial-pause',
@@ -432,7 +432,7 @@ def create_fluid_data(output_dir, seed, options):
 
 def main():
     parser = argparse.ArgumentParser(description="Creates physics sim data")
-    parser.add_argument("--output",
+    parser.add_argument("--output",#know
                         type=str,
                         required=True,
                         help="The path to the output directory")

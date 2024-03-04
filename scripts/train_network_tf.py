@@ -13,10 +13,10 @@ import tensorflow as tf
 from utils.deeplearningutilities.tf import Trainer, MyCheckpointManager
 from evaluate_network import evaluate_tf as evaluate
 
-_k = 1000
+_k = 50
 
-TrainParams = namedtuple('TrainParams', ['max_iter', 'base_lr', 'batch_size'])
-train_params = TrainParams(50 * _k, 0.001, 16)
+TrainParams = namedtuple('TrainParams', ['max_iter', 'base_lr', 'batch_size'])#zxc max_iter
+train_params = TrainParams(3 * _k, 0.001, 16)#prm
 
 
 def create_model(**kwargs):
@@ -46,7 +46,7 @@ def main():
 
     val_files = sorted(glob(os.path.join(cfg['dataset_dir'], 'valid', '*.zst')))
     train_files = sorted(
-        glob(os.path.join(cfg['dataset_dir'], 'train', '*.zst')))
+        glob(os.path.join(cfg['dataset_dir'], 'train', '*.zst')))#zxc
 
     val_dataset = read_data_val(files=val_files, window=1, cache_data=True)
 
@@ -55,8 +55,15 @@ def main():
                               window=3,
                               num_workers=2,
                               **cfg.get('train_data', {}))
+    # print('zxc dataset')
+    # print(type(dataset))
+
+
     data_iter = iter(dataset)
 
+    # print(type(data_iter))
+    # print(data_iter.shape)
+    # exit(0)
     trainer = Trainer(train_dir)
 
     model = create_model(**cfg.get('model', {}))
@@ -83,7 +90,7 @@ def main():
 
     checkpoint = tf.train.Checkpoint(step=tf.Variable(0),
                                      model=model,
-                                     optimizer=optimizer)
+                                     optimizer=optimizer)#zxc 恢复上次训练进度
 
     manager = MyCheckpointManager(checkpoint,
                                   trainer.checkpoint_dir,
@@ -100,6 +107,9 @@ def main():
         importance = tf.exp(-neighbor_scale * num_fluid_neighbors)
         return tf.reduce_mean(importance *
                               euclidean_distance(pr_pos, gt_pos)**gamma)
+                              #根据距离制定权重。
+                              #距离L2。
+                              
 
     @tf.function(experimental_relax_shapes=True)
     def train(model, batch):
@@ -113,13 +123,13 @@ def main():
                     batch['box'][batch_i], batch['box_normals'][batch_i]
                 ])
 
-                pr_pos1, pr_vel1 = model(inputs)
+                pr_pos1, pr_vel1 = model(inputs)#know zxc 使用call()
 
                 l = 0.5 * loss_fn(pr_pos1, batch['pos1'][batch_i],
                                   model.num_fluid_neighbors)
 
                 inputs = (pr_pos1, pr_vel1, None, batch['box'][batch_i],
-                          batch['box_normals'][batch_i])
+                          batch['box_normals'][batch_i])#zxc 只是将上述input中做了替换
                 pr_pos2, pr_vel2 = model(inputs)
 
                 l += 0.5 * loss_fn(pr_pos2, batch['pos2'][batch_i],
@@ -138,13 +148,51 @@ def main():
         checkpoint.restore(manager.latest_checkpoint)
 
     display_str_list = []
+    cnt=0
     while trainer.keep_training(checkpoint.step,
-                                train_params.max_iter,
+                                train_params.max_iter,#zxc
                                 checkpoint_manager=manager,
                                 display_str_list=display_str_list):
 
         data_fetch_start = time.time()
         batch = next(data_iter)
+        #zxc 取出一个batch。一个batch回传1次。一个batch是16帧数据。
+        #zxc 这16帧好像不是连续的。它们甚至都不是同一个场景。（粒子数不同）
+        print('-------------------------zxc batch next----------------')
+        print(type(batch))#dict
+
+        print(len(batch['pos0']))#16
+        print(batch['pos0'][0].shape)#13460 3
+        print(type(batch['pos0'][0]))#numpy
+        for i in range(16):
+            print(batch['pos0'][i].shape)#N 3 N在变化
+
+
+        print(len(batch['pos1']))#16
+        print(batch['pos1'][0].shape)#13460 3
+
+
+        print(len(batch['pos2']))#16
+        print(batch['pos2'][0].shape)#13460 3
+        for i in range(16):
+            print(batch['pos2'][i].shape)#N 3 
+
+
+        print(len(batch['vel0']))#16
+        print(batch['vel0'][0].shape)#13460 3
+        for i in range(16):
+            print(batch['vel0'][i].shape)
+            #N 3 N在变化，变化范围和上述完全相同，并且每一个batch的数据都不相同
+
+
+        print(len(batch['box']))#16
+        print(batch['box'][0].shape)#37005 3
+
+        print(len(batch['box_normals']))#16
+        print(batch['box_normals'][0].shape)#37005 3
+        cnt+=1
+        if(cnt==3):
+            exit(0)
         batch_tf = {}
         for k in ('pos0', 'vel0', 'pos1', 'pos2', 'box', 'box_normals'):
             batch_tf[k] = [tf.convert_to_tensor(x) for x in batch[k]]
@@ -160,7 +208,7 @@ def main():
                 tf.summary.scalar('LearningRate',
                                   optimizer.lr(trainer.current_step))
 
-        if trainer.current_step % (1 * _k) == 0:
+        if trainer.current_step % (1 * _k) == 0:#zxc 
             for k, v in evaluate(model,
                                  val_dataset,
                                  frame_skip=20,
@@ -168,7 +216,7 @@ def main():
                 with trainer.summary_writer.as_default():
                     tf.summary.scalar('eval/' + k, v)
 
-    model.save_weights('model_weights.h5')
+    model.save_weights('model_weights.h5')#zxc
     if trainer.current_step == train_params.max_iter:
         return trainer.STATUS_TRAINING_FINISHED
     else:
