@@ -15,6 +15,16 @@ from evaluate_network import evaluate_tf as evaluate
 
 _k = 50
 
+bvor=True #prm
+left=0
+right=50
+gap=7
+frameid=left
+
+tid="learnmcvsph" #prm
+print('tid\t'+tid)
+
+
 TrainParams = namedtuple('TrainParams', ['max_iter', 'base_lr', 'batch_size'])#zxc max_iter
 train_params = TrainParams(3 * _k, 0.001, 16)#prm
 
@@ -24,6 +34,127 @@ def create_model(**kwargs):
     """Returns an instance of the network for training and evaluation"""
     model = MyParticleNetwork(**kwargs)
     return model
+def zxc1ply(filename):
+    from plyfile import PlyData
+    import os
+    plydata =  PlyData.read(filename)
+    plydata = PlyData.read(filename)
+
+    vertex =  plydata ['vertex']
+       
+    x = vertex['x']
+    y = vertex['y']
+    z = vertex['z']
+
+
+    combined = np.stack((x, y, z), axis=-1)
+    return combined
+
+a=[]
+n=[]
+boxdone=0
+def zxcboxandnorm(lb,rt,rad):
+    global a,n,boxdone
+    if(boxdone):
+        return a,n
+
+
+    boxsize=rt-lb
+    partnumx=   int((boxsize[0]/(2*rad)))+1
+    partnumy=   int((boxsize[1]/(2*rad)))+1
+    partnumz=   int((boxsize[2]/(2*rad)))+1
+    print(partnumx)
+    print(partnumy)
+    print(partnumz)
+    for i in (range(partnumx)):
+        for j in range(partnumy):
+            for k in range(partnumz):
+                if(    i!=0 and i!=partnumx-1 \
+                   and j!=0 and j!=partnumy-1 \
+                   and k!=0 and k!=partnumz-1):#internal
+                    # print(str(i+1)+","+str(j+1)+","+str(k+1))
+                    continue
+
+                if(i==0):
+                    n.append([1.,0,0])
+                elif(i==partnumx-1):
+                    n.append([-1.,0,0])
+
+                elif(j==0):
+                    n.append([0,1.,0])
+                elif(j==partnumy-1):
+                    n.append([0,-1.,0])
+
+                elif(k==0):
+                    n.append([0,0,1.])
+                elif(k==partnumz-1):
+                    n.append([0,0,-1.])
+
+
+
+                a.append([lb[0]+i*rad*2,
+                          lb[1]+j*rad*2,
+                          lb[2]+k*rad*2])
+                
+    a=np.array(a)
+    n=np.array(n)
+
+    a.astype(np.float32)
+    n.astype(np.float32)
+
+    print('[box]\t'+str(a.shape))
+    print(a.dtype)
+    boxdone=1
+    return a,n
+
+
+def zxcnext():
+
+#inf FROM PINN-TORCH
+    from plyfile import PlyData
+    import os
+    all_data = []
+    filepathj='\\mcvsph-dataset\\'
+    filenamej='particle_object_0_'
+    filedir="/w/cconv-dataset/mcvsph-dataset/"
+
+    posname=filedir+"particle_object_0_"
+    velname=filedir+"velocity_object_0_"
+
+    global frameid
+    batch={}
+    batch['pos0']=[]
+    batch['pos1']=[]
+    batch['pos2']=[]
+    batch['vel0']=[] 
+    batch['box']=[]
+    batch['box_normals']=[]
+
+    for j in range(0,16):#prm
+    
+        print('sample '+str(frameid))
+
+        batch['pos0'].append(zxc1ply(posname+f"{frameid}.ply"))
+        batch['pos1'].append(zxc1ply(posname+f"{frameid+1}.ply"))
+        batch['pos2'].append(zxc1ply(posname+f"{frameid+2}.ply"))
+
+        batch['vel0'].append(zxc1ply(velname+f"{frameid}.ply"))
+
+
+        b,bn=zxcboxandnorm(
+            lb=np.array([0,0,0]),
+            rt=np.array([2.0,6.0,2.0]),
+            rad=0.03)
+        batch['box'].append(b)
+        batch['box_normals'].append(n)
+
+        frameid+=gap
+        if(frameid>right):
+            frameid=left
+        
+    print('<dt loaded>')    
+    return batch
+
 
 
 def main():
@@ -148,51 +279,54 @@ def main():
         checkpoint.restore(manager.latest_checkpoint)
 
     display_str_list = []
-    cnt=0
+    zxccnt=0
     while trainer.keep_training(checkpoint.step,
                                 train_params.max_iter,#zxc
                                 checkpoint_manager=manager,
                                 display_str_list=display_str_list):
 
         data_fetch_start = time.time()
-        batch = next(data_iter)
+        if(bvor):
+            batch=zxcnext()
+        else:
+            batch = next(data_iter)
         #zxc 取出一个batch。一个batch回传1次。一个batch是16帧数据。
-        #zxc 这16帧好像不是连续的。它们甚至都不是同一个场景。（粒子数不同）
-        print('-------------------------zxc batch next----------------')
-        print(type(batch))#dict
+        # print('-------------------------zxc batch next----------------')
+        # print(type(batch))#dict
 
-        print(len(batch['pos0']))#16
-        print(batch['pos0'][0].shape)#13460 3
-        print(type(batch['pos0'][0]))#numpy
-        for i in range(16):
-            print(batch['pos0'][i].shape)#N 3 N在变化
-
-
-        print(len(batch['pos1']))#16
-        print(batch['pos1'][0].shape)#13460 3
+        # print(len(batch['pos0']))#16
+        # print(batch['pos0'][0].shape)#13460 3
+        # print(type(batch['pos0'][0]))#numpy
+        # for i in range(16):
+        #     print(batch['pos0'][i].shape)#N 3 N在变化
 
 
-        print(len(batch['pos2']))#16
-        print(batch['pos2'][0].shape)#13460 3
-        for i in range(16):
-            print(batch['pos2'][i].shape)#N 3 
+        # print(len(batch['pos1']))#16
+        # print(batch['pos1'][0].shape)#13460 3
 
 
-        print(len(batch['vel0']))#16
-        print(batch['vel0'][0].shape)#13460 3
-        for i in range(16):
-            print(batch['vel0'][i].shape)
-            #N 3 N在变化，变化范围和上述完全相同，并且每一个batch的数据都不相同
+        # print(len(batch['pos2']))#16
+        # print(batch['pos2'][0].shape)#13460 3
+        # for i in range(16):
+        #     print(batch['pos2'][i].shape)#N 3 
 
 
-        print(len(batch['box']))#16
-        print(batch['box'][0].shape)#37005 3
+        # print(len(batch['vel0']))#16
+        # print(batch['vel0'][0].shape)#13460 3
+        # for i in range(16):
+        #     print(batch['vel0'][i].shape)
+        #     #N 3 N在变化，变化范围和上述完全相同，并且每一个batch的数据都不相同
 
-        print(len(batch['box_normals']))#16
-        print(batch['box_normals'][0].shape)#37005 3
-        cnt+=1
-        if(cnt==3):
-            exit(0)
+
+        # print(len(batch['box']))#16
+        # print(batch['box'][0].shape)#37005 3
+
+        # print(len(batch['box_normals']))#16
+        # print(batch['box_normals'][0].shape)#37005 3
+        # zxccnt+=1
+        # if(zxccnt==3):
+        #     exit(0)
+        
         batch_tf = {}
         for k in ('pos0', 'vel0', 'pos1', 'pos2', 'box', 'box_normals'):
             batch_tf[k] = [tf.convert_to_tensor(x) for x in batch[k]]
@@ -216,7 +350,7 @@ def main():
                 with trainer.summary_writer.as_default():
                     tf.summary.scalar('eval/' + k, v)
 
-    model.save_weights('model_weights.h5')#zxc
+    model.save_weights(tid+'.h5')#zxc
     if trainer.current_step == train_params.max_iter:
         return trainer.STATUS_TRAINING_FINISHED
     else:

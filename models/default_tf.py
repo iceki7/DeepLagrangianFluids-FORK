@@ -149,11 +149,13 @@ class MyParticleNetwork(tf.keras.Model):
         self.pos_correction = (1.0 / 128) * self.ans_convs[-1]
         return self.pos_correction #zxc
 
-    def call(self, inputs, fixed_radius_search_hash_table=None):#zxc
+    def call(self, inputs, fixed_radius_search_hash_table=None):#zxc 前向过程
         """computes 1 simulation timestep
         inputs: list or tuple with (pos,vel,feats,box,box_feats)
           pos and vel are the positions and velocities of the fluid particles.
           feats is reserved for passing additional features, use None here.
+
+        zxc
           box are the positions of the static particles and box_feats are the
           normals of the static particles.
         """
