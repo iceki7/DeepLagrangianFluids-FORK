@@ -110,7 +110,8 @@ class MyParticleNetwork(tf.keras.Model):
         #N 1
         #N 3, N是变化的
         if not other_feats is None:
-            fluid_feats.append(other_feats)#zxc
+            fluid_feats.append(other_feats)
+            #zxc
 
         fluid_feats = tf.concat(fluid_feats, axis=-1)
 
@@ -136,6 +137,7 @@ class MyParticleNetwork(tf.keras.Model):
                 ans = ans_conv + ans_dense
             self.ans_convs.append(ans)
 
+        #zxc
         # compute the number of fluid neighbors.
         # this info is used in the loss function during training.
         self.num_fluid_neighbors = ml3d.ops.reduce_subarrays_sum(
@@ -147,9 +149,12 @@ class MyParticleNetwork(tf.keras.Model):
 
         # scale to better match the scale of the output distribution
         self.pos_correction = (1.0 / 128) * self.ans_convs[-1]
-        return self.pos_correction #zxc
+        return self.pos_correction
+        #zxc
 
-    def call(self, inputs, fixed_radius_search_hash_table=None):#zxc 前向过程
+    def call(self, inputs, fixed_radius_search_hash_table=None):
+        #zxc 前向过程
+        
         """computes 1 simulation timestep
         inputs: list or tuple with (pos,vel,feats,box,box_feats)
           pos and vel are the positions and velocities of the fluid particles.

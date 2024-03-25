@@ -11,22 +11,58 @@ from glob import glob
 import time
 import tensorflow as tf
 from utils.deeplearningutilities.tf import Trainer, MyCheckpointManager
-from evaluate_network import evaluate_tf as evaluate
+from evaluate_network import evaluate_tf as evaluate    
+#zxc  ie evaluating...(validate ds)
 
-_k = 50
-
-bvor=True #prm
-left=0
-right=50
-gap=7
-frameid=left
-
-tid="learnmcvsph" #prm
-print('tid\t'+tid)
+import json
 
 
-TrainParams = namedtuple('TrainParams', ['max_iter', 'base_lr', 'batch_size'])#zxc max_iter
-train_params = TrainParams(3 * _k, 0.001, 16)#prm
+_k = 1000
+#zxc max_iter
+TrainParams = namedtuple('TrainParams', ['max_iter', 'base_lr', 'batch_size'])
+train_params = TrainParams(50 * _k, 0.001, 16)
+
+#prm
+bcutsparse=1
+bvor=1
+bevaluate=0
+yamlname="error"
+
+jsoname="lowfluid2.json"
+jsoname="lowfluid3.json"
+jsoname="lowfluid2cut.json"
+dtdir="/w/cconv-dataset/mcvsph-dataset/lowfluid/"
+
+
+
+frameid=0
+
+
+
+if(bvor):
+    #json存储训练超参数
+    #yaml用于编号是否是之前训练过的场景。用于恢复训练。
+
+
+    with open(jsoname, 'r') as file:
+        jsondata = json.load(file)# inf json里如果写不存在的路径，不会自动新建
+    print('['+jsoname+']')   
+    _k                 =jsondata['_k']
+    left=jsondata['left']
+    right=jsondata['right']
+    gap=jsondata['gap']
+
+    train_params = TrainParams(
+        jsondata['max_iter'],
+        jsondata['base_lr'],
+        jsondata['batch_size'], 
+        )
+
+    frameid=left
+
+
+#prm
+#每隔_k，evaluate一次.  _k会打印在训练时间左边
 
 
 def create_model(**kwargs):
@@ -113,13 +149,13 @@ def zxcnext():
 #inf FROM PINN-TORCH
     from plyfile import PlyData
     import os
+    global dtdir
     all_data = []
-    filepathj='\\mcvsph-dataset\\'
-    filenamej='particle_object_0_'
-    filedir="/w/cconv-dataset/mcvsph-dataset/"
 
-    posname=filedir+"particle_object_0_"
-    velname=filedir+"velocity_object_0_"
+
+
+    posname=dtdir+"particle_object_0_"
+    velname=dtdir+"velocity_object_0_"
 
     global frameid
     batch={}
@@ -132,7 +168,7 @@ def zxcnext():
 
     for j in range(0,16):#prm
     
-        print('sample '+str(frameid))
+        # print('sample '+str(frameid))
 
         batch['pos0'].append(zxc1ply(posname+f"{frameid}.ply"))
         batch['pos1'].append(zxc1ply(posname+f"{frameid+1}.ply"))
@@ -152,7 +188,7 @@ def zxcnext():
         if(frameid>right):
             frameid=left
         
-    print('<dt loaded>')    
+    # print('<dt loaded>')  
     return batch
 
 
@@ -169,7 +205,10 @@ def main():
 
     with open(args.cfg, 'r') as f:
         cfg = yaml.safe_load(f)
-
+        yamlname=args.cfg.split(".")[0]
+        if(yamlname!=jsoname.split(".")[0]):
+            print("[Err]\t yaml json not match")
+            exit(0)
     # the train dir stores all checkpoints and summaries. The dir name is the name of this file combined with the name of the config file
     train_dir = os.path.splitext(
         os.path.basename(__file__))[0] + '_' + os.path.splitext(
@@ -177,9 +216,11 @@ def main():
 
     val_files = sorted(glob(os.path.join(cfg['dataset_dir'], 'valid', '*.zst')))
     train_files = sorted(
-        glob(os.path.join(cfg['dataset_dir'], 'train', '*.zst')))#zxc
+        glob(os.path.join(cfg['dataset_dir'], 'train', '*.zst')))
+        #zxc
 
     val_dataset = read_data_val(files=val_files, window=1, cache_data=True)
+    #zxc
 
     dataset = read_data_train(files=train_files,
                               batch_size=train_params.batch_size,
@@ -221,7 +262,8 @@ def main():
 
     checkpoint = tf.train.Checkpoint(step=tf.Variable(0),
                                      model=model,
-                                     optimizer=optimizer)#zxc 恢复上次训练进度
+                                     optimizer=optimizer)
+                                     #zxc 恢复上次训练进度
 
     manager = MyCheckpointManager(checkpoint,
                                   trainer.checkpoint_dir,
@@ -236,6 +278,11 @@ def main():
         gamma = 0.5
         neighbor_scale = 1 / 40
         importance = tf.exp(-neighbor_scale * num_fluid_neighbors)
+        if(bcutsparse):
+            cut=1/(1+tf.exp(-9.0*(num_fluid_neighbors-5.0)))
+            importance=importance*cut
+        #prm。邻居粒子数量多时权重比较小。
+
         return tf.reduce_mean(importance *
                               euclidean_distance(pr_pos, gt_pos)**gamma)
                               #根据距离制定权重。
@@ -254,13 +301,16 @@ def main():
                     batch['box'][batch_i], batch['box_normals'][batch_i]
                 ])
 
-                pr_pos1, pr_vel1 = model(inputs)#know zxc 使用call()
+                pr_pos1, pr_vel1 = model(inputs)
+                #know zxc 使用call()
 
                 l = 0.5 * loss_fn(pr_pos1, batch['pos1'][batch_i],
                                   model.num_fluid_neighbors)
 
                 inputs = (pr_pos1, pr_vel1, None, batch['box'][batch_i],
-                          batch['box_normals'][batch_i])#zxc 只是将上述input中做了替换
+                          batch['box_normals'][batch_i])
+                          #zxc 只是将上述input中做了替换
+
                 pr_pos2, pr_vel2 = model(inputs)
 
                 l += 0.5 * loss_fn(pr_pos2, batch['pos2'][batch_i],
@@ -277,11 +327,17 @@ def main():
     if manager.latest_checkpoint:
         print('restoring from ', manager.latest_checkpoint)
         checkpoint.restore(manager.latest_checkpoint)
+        print('[restore]')
+        #zxc know
+    
+    else:#add
+        print('[new model]')
 
     display_str_list = []
-    zxccnt=0
     while trainer.keep_training(checkpoint.step,
-                                train_params.max_iter,#zxc
+                                train_params.max_iter,
+                                #zxc
+
                                 checkpoint_manager=manager,
                                 display_str_list=display_str_list):
 
@@ -335,6 +391,7 @@ def main():
 
         current_loss = train(model, batch_tf)
         display_str_list = ['loss', float(current_loss)]
+        #zxc
 
         if trainer.current_step % 10 == 0:
             with trainer.summary_writer.as_default():
@@ -342,15 +399,20 @@ def main():
                 tf.summary.scalar('LearningRate',
                                   optimizer.lr(trainer.current_step))
 
-        if trainer.current_step % (1 * _k) == 0:#zxc 
-            for k, v in evaluate(model,
-                                 val_dataset,
-                                 frame_skip=20,
-                                 **cfg.get('evaluation', {})).items():
-                with trainer.summary_writer.as_default():
-                    tf.summary.scalar('eval/' + k, v)
+        if trainer.current_step % (1 * _k) == 0:
+            #zxc
 
-    model.save_weights(tid+'.h5')#zxc
+            if(bevaluate):#swi
+                for k, v in evaluate(model,
+                                    val_dataset,
+                                    frame_skip=20,
+                                    **cfg.get('evaluation', {})).items():
+                    with trainer.summary_writer.as_default():
+                        tf.summary.scalar('eval/' + k, v)
+    print('[saveh5]')
+    model.save_weights(yamlname+'.h5')
+    #zxc
+
     if trainer.current_step == train_params.max_iter:
         return trainer.STATUS_TRAINING_FINISHED
     else:
