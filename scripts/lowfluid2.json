@@ -1,9 +1,0 @@
-{
-    "left": 35,
-    "right": 180,
-    "gap": 6,
-    "max_iter": 2500,
-    "base_lr": 0.01,
-    "batch_size": 8,
-    "_k": 50
-}

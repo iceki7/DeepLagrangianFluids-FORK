@@ -2,7 +2,7 @@ import tensorflow as tf
 import open3d.ml.tf as ml3d
 import numpy as np
 
-
+bvor=0
 class MyParticleNetwork(tf.keras.Model):
 
     def __init__(self,
@@ -12,19 +12,36 @@ class MyParticleNetwork(tf.keras.Model):
                  interpolation='linear',
                  use_window=True,
                  particle_radius=0.025,
+                 #prm
                  timestep=1 / 50,
+                 #prm
                  gravity=(0, -9.81, 0)):
+                 #prm
         super().__init__(name=type(self).__name__)
+
         self.layer_channels = [32, 64, 64, 3]
         self.kernel_size = kernel_size
         self.radius_scale = radius_scale
         self.coordinate_mapping = coordinate_mapping
         self.interpolation = interpolation
         self.use_window = use_window
+        
+        
         self.particle_radius = particle_radius
+        if(bvor):
+            print('de[bvor]')
+            self.particle_radius=0.03
+
+
         self.filter_extent = np.float32(self.radius_scale * 6 *
                                         self.particle_radius)
+        
+        
         self.timestep = timestep
+        if(bvor):
+            self.timestep=0.016
+
+
         self.gravity = gravity
 
         self._all_convs = []

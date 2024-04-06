@@ -1,14 +1,14 @@
-1. torch环境有无
+torch环境有无
     一键执行失败
     
-2.全流程。短途训练+可视化。
 
-3.数据生成
+
+数据生成
     dpi-net 
     splish
 
 
-4.数据格式
+数据格式
     zst 
     这个格式是不是作者写过一个接口，既然它能用很多种生成方式得到的话？
         有从numpy转换为zst的接口
@@ -20,12 +20,10 @@
 
 
 
-
 首先 待学习的数据里 涡度的效果就必须要明显才行 最好是弄些具有代表性的场景
 然后学习的时候要把多个场景作为训练数据
 （因为一个batch里其实包含了很多个不同的场景，应该是为了方法的泛化）
 而每个场景里其实只取了3帧数据。
-
 
 
 
@@ -34,17 +32,15 @@
 简单场景，水块。
 
 
-数据场景+物理模拟结果。
-    our_default_scene。逐帧结果在/partio里
-    sim_0002只是表示一个随机种子。它最后会用在train/valid划分中。
-    sim0001 和sim0002 连水块形状都不一样
+脚本使用方法
+    数据场景+物理模拟结果。
+        our_default_scene。逐帧结果在/partio
+        sim_0002只是表示一个随机种子。它最后会用在train/valid划分中。
+        sim0001 和sim0002 连水块形状都不一样 它是不同的场景编号
 
-
-
-压缩数据的结果。
-    our_default_data里。
-
-    sim_xxxx_split 
+    压缩数据的结果。
+        our_default_data里。
+        sim_xxxx_split 
 
 
 
@@ -89,13 +85,10 @@ train stretegy.yaml
         其实就是一个理论上的数组就可以了。不用真的去用框架造出来。用numpy造都行。
 
 
-随机旋转策略。
-划分valid ds。
+有ckpt就会restore。（文件夹里）
 
 
-重新设计了粒子权重。对于这种飞溅出去的粒子重要性降低
-但是仍然保留了原先权重考虑表面特征的属性。
-这也和核半径大小到底是多少有关。
+
 
 
 
@@ -105,17 +98,45 @@ batchSize越大，网络回传一次就要考虑越多的信息。按理来说�
 可能还是因为数据规模的问题。
 或者完全照搬原来的网络的训练集大小以及超参数。
 
-为啥default_data上来默认的loss就只有2？
 
 
 
-有ckpt就会restore。（文件夹里）
+
+
+
+
+
+
+【可选策略】
+随机旋转。
+划分valid ds。
+
+重新设计了粒子权重。对于这种飞溅出去的粒子重要性降低
+但是仍然保留了原先权重考虑表面特征的属性。
+这也和核半径大小到底是多少有关。
 
 
 【提速】
     在同一个场景中重复采样，考虑把数据保存下来节约时间  
     多开几张卡
-    长时间训练必须用tmux。
+
+
+
+
+【训练结果】
+
+
+为啥default_data上来默认的loss就只有2
+它训练2800时已经有水块下落的基本效果了
+虽然loss值变动不大，仍然有一点几。其实一开始就是一点几。
+
+
+先迭代2500次，但是loss后续降的很慢（最低能到25左右）。泛化可视化很差。
+
+
+原先想的是如果它学多个场景能做的很好。
+那学单一场景应该也可以。
+是否是因为它这个必须要在不同尺寸的多个数据集上训练才能获得泛化性？
 
 
 【评估模型的损失】
@@ -123,19 +144,19 @@ batchSize越大，网络回传一次就要考虑越多的信息。按理来说�
 
 
 【评估模型的预测】
-./run_network.py --weights lowfluid2.h5 \
+./run_network.py --weights lowfluid1.h5 \
                  --scene example_scene.json \
-                 --output lowfluid2_out1900 \
+                 --output lowfluid1_out \
                  --write-ply \
                  train_network_tf.py
 
 
-./run_network.py --weights lowfluid2cut.h5 \
+./run_network.py --weights default.h5 \
                  --scene example_scene.json \
-                 --output lowfluid2cut_out1750 \
+                 --output default_out2800 \
                  --write-ply \
-                 train_network_tf.py                
-cp -r lowfluid2cut_out1750 
+                 train_network_tf.py
+
 
 ./run_network.py --weights pretrained_model_weights.h5 \
                  --scene example_scene.json \

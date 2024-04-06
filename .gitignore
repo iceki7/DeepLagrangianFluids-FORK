@@ -1,0 +1,14 @@
+*.zst
+*.bgeo
+*.ply
+*.npy
+*.npz
+*.bin
+*.obj
+*.pyc
+*.md5
+*.csdf
+*.data-*
+*.index
+*.tfevents*
+SPH_log*

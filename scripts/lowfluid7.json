@@ -1,0 +1,12 @@
+{
+    "left": 1,
+    "right": 215,
+    "gap": 6,
+    "max_iter": 50000,
+    "base_lr": 0.001,
+    "batch_size": 16,
+    "_k": 1000,
+    "cutsparse":1,
+    "cut_thres":4.0,
+    "dtdir":"/w/cconv-dataset/mcvsph-dataset/lowfluid/"
+}
