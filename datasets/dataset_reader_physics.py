@@ -44,6 +44,9 @@ class PhysicsSimDataFlow(dataflow.RNGDataFlow):#zxc 这个对象送入外部库d
             # get box from first item. The box is valid for the whole file
             box = data[0]['box']
             box_normals = data[0]['box_normals']
+            #zxc box_normal标签已经被编码到zst里了
+
+            
 
             for data_i in data_idxs:
 

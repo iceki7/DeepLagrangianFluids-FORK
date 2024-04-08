@@ -11,7 +11,7 @@ from glob import glob
 import time
 import tensorflow as tf
 from utils.deeplearningutilities.tf import Trainer, MyCheckpointManager
-from evaluate_network import evaluate_tf as evaluate    
+from evaluate_network import evaluate_tf as evaluate
 #zxc  ie evaluating...(validate ds)
 
 import json
@@ -23,25 +23,42 @@ TrainParams = namedtuple('TrainParams', ['max_iter', 'base_lr', 'batch_size'])
 train_params = TrainParams(50 * _k, 0.001, 16)
 
 #prm
-bcutsparse=1
 bvor=1
-bevaluate=0
+bdebug=0
+
+cut_thres=4.0
+jsoname="lowfluid7.json"
+# jsoname="lowfluid4.json"
+# jsoname="lowfluid5.json"
+jsoname="default.json"
+jsoname="multi-10.json"
+
+# jsoname="temp.json"
+# jsoname="lowfluid2cut.json"
+
+dt_frame=0.016
+
+
+
+
+#not prm
 yamlname="error"
-
-jsoname="lowfluid2.json"
-jsoname="lowfluid3.json"
-jsoname="lowfluid2cut.json"
-dtdir="/w/cconv-dataset/mcvsph-dataset/lowfluid/"
-
-
-
 frameid=0
+bcutsparse=0
+bevaluate=0
+mycnt=0
+if(bvor):
+    bevaluate=0
+else:
+    bevaluate=1
+
+sceneidx=0
 
 
 
 if(bvor):
     #json存储训练超参数
-    #yaml用于编号是否是之前训练过的场景。用于恢复训练。
+    #yaml用于编号是否是之前训练过的场景。用于恢复训练。里面的数据路径不算数
 
 
     with open(jsoname, 'r') as file:
@@ -50,13 +67,20 @@ if(bvor):
     _k                 =jsondata['_k']
     left=jsondata['left']
     right=jsondata['right']
+    dtdir=jsondata['dtdir']
     gap=jsondata['gap']
+    bcutsparse=jsondata['cutsparse']
+
+    bmultiscene=jsondata['multiscene']
+    scenenum=jsondata['scenenum']
+    basescene=jsondata['basescene']
 
     train_params = TrainParams(
         jsondata['max_iter'],
         jsondata['base_lr'],
         jsondata['batch_size'], 
         )
+
 
     frameid=left
 
@@ -70,10 +94,12 @@ def create_model(**kwargs):
     """Returns an instance of the network for training and evaluation"""
     model = MyParticleNetwork(**kwargs)
     return model
-def zxc1ply(filename):
+def get1ply(filename):
     from plyfile import PlyData
     import os
-    plydata =  PlyData.read(filename)
+
+    #know 没找到文件会报错
+    plydata = PlyData.read(filename)
     plydata = PlyData.read(filename)
 
     vertex =  plydata ['vertex']
@@ -86,78 +112,37 @@ def zxc1ply(filename):
     combined = np.stack((x, y, z), axis=-1)
     return combined
 
-a=[]
-n=[]
-boxdone=0
-def zxcboxandnorm(lb,rt,rad):
-    global a,n,boxdone
-    if(boxdone):
-        return a,n
-
-
-    boxsize=rt-lb
-    partnumx=   int((boxsize[0]/(2*rad)))+1
-    partnumy=   int((boxsize[1]/(2*rad)))+1
-    partnumz=   int((boxsize[2]/(2*rad)))+1
-    print(partnumx)
-    print(partnumy)
-    print(partnumz)
-    for i in (range(partnumx)):
-        for j in range(partnumy):
-            for k in range(partnumz):
-                if(    i!=0 and i!=partnumx-1 \
-                   and j!=0 and j!=partnumy-1 \
-                   and k!=0 and k!=partnumz-1):#internal
-                    # print(str(i+1)+","+str(j+1)+","+str(k+1))
-                    continue
-
-                if(i==0):
-                    n.append([1.,0,0])
-                elif(i==partnumx-1):
-                    n.append([-1.,0,0])
-
-                elif(j==0):
-                    n.append([0,1.,0])
-                elif(j==partnumy-1):
-                    n.append([0,-1.,0])
-
-                elif(k==0):
-                    n.append([0,0,1.])
-                elif(k==partnumz-1):
-                    n.append([0,0,-1.])
 
 
 
-                a.append([lb[0]+i*rad*2,
-                          lb[1]+j*rad*2,
-                          lb[2]+k*rad*2])
-                
-    a=np.array(a)
-    n=np.array(n)
+pos0dict={}
+pos1dict={}
+pos2dict={}
 
-    a.astype(np.float32)
-    n.astype(np.float32)
+boxpdict={}
+boxndict={}
 
-    print('[box]\t'+str(a.shape))
-    print(a.dtype)
-    boxdone=1
-    return a,n
+pos0dict[0]={}
+pos1dict[0]={}
+pos2dict[0]={}
 
-
-def zxcnext():
+def mynext():#know
 
 #inf FROM PINN-TORCH
     from plyfile import PlyData
     import os
     global dtdir
-    all_data = []
+    global frameid,train_params
+    global bmultiscene,sceneidx,scenenum
+    global mycnt
 
 
 
-    posname=dtdir+"particle_object_0_"
-    velname=dtdir+"velocity_object_0_"
 
-    global frameid
+    posname=dtdir+basescene+"-r"+str(sceneidx)+"_output/particle_object_0_"
+    velname=dtdir+basescene+"-r"+ str(sceneidx)+"_output/velocity_object_0_"
+
+
     batch={}
     batch['pos0']=[]
     batch['pos1']=[]
@@ -166,29 +151,81 @@ def zxcnext():
     batch['box']=[]
     batch['box_normals']=[]
 
-    for j in range(0,16):#prm
+    for j in range(0,train_params.batch_size):#prm
     
+        if(frameid in pos0dict[sceneidx]):#之前已经采样过，就不要重新读文件了 know
+            pos0=pos0dict[sceneidx][frameid]
+            pos1=pos1dict[sceneidx][frameid]
+            pos2=pos2dict[sceneidx][frameid]
         # print('sample '+str(frameid))
+        else:
+            pos0=get1ply(posname+f"{frameid+0}.ply")
+            pos1=get1ply(posname+f"{frameid+1}.ply")
+            pos2=get1ply(posname+f"{frameid+2}.ply")
 
-        batch['pos0'].append(zxc1ply(posname+f"{frameid}.ply"))
-        batch['pos1'].append(zxc1ply(posname+f"{frameid+1}.ply"))
-        batch['pos2'].append(zxc1ply(posname+f"{frameid+2}.ply"))
-
-        batch['vel0'].append(zxc1ply(velname+f"{frameid}.ply"))
+            pos0dict[sceneidx][frameid]=pos0
+            pos1dict[sceneidx][frameid]=pos1
+            pos2dict[sceneidx][frameid]=pos2
 
 
-        b,bn=zxcboxandnorm(
-            lb=np.array([0,0,0]),
-            rt=np.array([2.0,6.0,2.0]),
-            rad=0.03)
-        batch['box'].append(b)
-        batch['box_normals'].append(n)
+        batch['pos0'].append(pos0)
+        batch['pos1'].append(pos1)
+        batch['pos2'].append(pos2)
+
+
+        # batch['vel0'].append(get1ply(velname+f"{frameid}.ply"))
+        batch['vel0'].append((pos1-pos0)/dt_frame)
+
+        if(sceneidx in boxpdict):
+            boxp=boxpdict[sceneidx]
+            boxn=boxndict[sceneidx]
+        else:
+
+            boxp=np.load(dtdir+"bp-"+basescene+"-r"+str(sceneidx)+".npy")
+            boxn=np.load(dtdir+"bn-"+basescene+"-r"+str(sceneidx)+".npy")
+            
+            boxpdict[sceneidx]=boxp
+            boxndict[sceneidx]=boxn
+        
+        if(bdebug):
+            if(frameid==left):
+                print('[boxp shape]')
+                print(boxp.shape)
+                print(boxn.shape)
+
+            if(sceneidx==2):
+                exit(0)
+        
+
+        batch['box'].        append(boxp)
+        batch['box_normals'].append(boxn)
 
         frameid+=gap
-        if(frameid>right):
+        if(frameid>right or frameid+2>right):#一个场景遍历完了
             frameid=left
-        
+
+            if(bmultiscene):
+                sceneidx+=1
+                
+                while(sceneidx in [4,9]):
+                    sceneidx+=1
+
+                if(sceneidx==scenenum):
+                    sceneidx=0
+                else:
+                    pos0dict[sceneidx]={}
+                    pos1dict[sceneidx]={}
+                    pos2dict[sceneidx]={}
+
+                if(bdebug):
+                    print('<scene '+str(sceneidx)+'>')
+
+
     # print('<dt loaded>')  
+
+    # print(batch['vel0'][2].shape)
+    # print(batch['pos0'][2].shape)
+
     return batch
 
 
@@ -279,7 +316,7 @@ def main():
         neighbor_scale = 1 / 40
         importance = tf.exp(-neighbor_scale * num_fluid_neighbors)
         if(bcutsparse):
-            cut=1/(1+tf.exp(-9.0*(num_fluid_neighbors-5.0)))
+            cut=1/(1+tf.exp(-9.0*(num_fluid_neighbors-cut_thres)))
             importance=importance*cut
         #prm。邻居粒子数量多时权重比较小。
 
@@ -306,6 +343,7 @@ def main():
 
                 l = 0.5 * loss_fn(pr_pos1, batch['pos1'][batch_i],
                                   model.num_fluid_neighbors)
+                                  #只有位置信息参与loss计算
 
                 inputs = (pr_pos1, pr_vel1, None, batch['box'][batch_i],
                           batch['box_normals'][batch_i])
@@ -319,6 +357,10 @@ def main():
 
             losses.extend(model.losses)
             total_loss = 128 * tf.add_n(losses) / batch_size
+
+            if(bdebug):
+                tf.print(total_loss)
+                print(total_loss)#涡度数据是20多，default_data是2.多
 
             grads = tape.gradient(total_loss, model.trainable_variables)
             optimizer.apply_gradients(zip(grads, model.trainable_variables))
@@ -343,9 +385,11 @@ def main():
 
         data_fetch_start = time.time()
         if(bvor):
-            batch=zxcnext()
+            batch=mynext()
         else:
             batch = next(data_iter)
+
+
         #zxc 取出一个batch。一个batch回传1次。一个batch是16帧数据。
         # print('-------------------------zxc batch next----------------')
         # print(type(batch))#dict
@@ -386,6 +430,8 @@ def main():
         batch_tf = {}
         for k in ('pos0', 'vel0', 'pos1', 'pos2', 'box', 'box_normals'):
             batch_tf[k] = [tf.convert_to_tensor(x) for x in batch[k]]
+        #know zxc 全部转成tf tensor
+        
         data_fetch_latency = time.time() - data_fetch_start
         trainer.log_scalar_every_n_minutes(5, 'DataLatency', data_fetch_latency)
 

@@ -2,7 +2,7 @@ import tensorflow as tf
 import open3d.ml.tf as ml3d
 import numpy as np
 
-bvor=1
+
 class MyParticleNetwork(tf.keras.Model):
 
     def __init__(self,
@@ -12,36 +12,19 @@ class MyParticleNetwork(tf.keras.Model):
                  interpolation='linear',
                  use_window=True,
                  particle_radius=0.025,
-                 #prm
                  timestep=1 / 50,
-                 #prm
                  gravity=(0, -9.81, 0)):
-                 #prm
         super().__init__(name=type(self).__name__)
-
         self.layer_channels = [32, 64, 64, 3]
         self.kernel_size = kernel_size
         self.radius_scale = radius_scale
         self.coordinate_mapping = coordinate_mapping
         self.interpolation = interpolation
         self.use_window = use_window
-        
-        
         self.particle_radius = particle_radius
-        if(bvor):
-            print('de[bvor]')
-            self.particle_radius=0.03
-
-
         self.filter_extent = np.float32(self.radius_scale * 6 *
                                         self.particle_radius)
-        
-        
         self.timestep = timestep
-        if(bvor):
-            self.timestep=0.016
-
-
         self.gravity = gravity
 
         self._all_convs = []
@@ -121,15 +104,8 @@ class MyParticleNetwork(tf.keras.Model):
         filter_extent = tf.constant(self.filter_extent)
 
         fluid_feats = [tf.ones_like(pos[:, 0:1]), vel]
-        # print('zxc feat-------------')
-        # print(fluid_feats[0].shape) 
-        # print(fluid_feats[1].shape) 
-        #N 1
-        #N 3, N是变化的
         if not other_feats is None:
             fluid_feats.append(other_feats)
-            #zxc
-
         fluid_feats = tf.concat(fluid_feats, axis=-1)
 
         self.ans_conv0_fluid = self.conv0_fluid(fluid_feats, pos, pos,
@@ -154,7 +130,6 @@ class MyParticleNetwork(tf.keras.Model):
                 ans = ans_conv + ans_dense
             self.ans_convs.append(ans)
 
-        #zxc
         # compute the number of fluid neighbors.
         # this info is used in the loss function during training.
         self.num_fluid_neighbors = ml3d.ops.reduce_subarrays_sum(
@@ -167,30 +142,20 @@ class MyParticleNetwork(tf.keras.Model):
         # scale to better match the scale of the output distribution
         self.pos_correction = (1.0 / 128) * self.ans_convs[-1]
         return self.pos_correction
-        #zxc
 
     def call(self, inputs, fixed_radius_search_hash_table=None):
-        #zxc 前向过程
-        
         """computes 1 simulation timestep
         inputs: list or tuple with (pos,vel,feats,box,box_feats)
           pos and vel are the positions and velocities of the fluid particles.
           feats is reserved for passing additional features, use None here.
-
-        zxc
           box are the positions of the static particles and box_feats are the
           normals of the static particles.
         """
         pos, vel, feats, box, box_feats = inputs
 
-        #zxc 简单施加重力后的结果
         pos2, vel2 = self.integrate_pos_vel(pos, vel)
-
-        #zxc 仅这一步用nn
         pos_correction = self.compute_correction(
             pos2, vel2, feats, box, box_feats, fixed_radius_search_hash_table)
-
-        #zxc 先矫正位置，然后反推速度
         pos2_corrected, vel2_corrected = self.compute_new_pos_vel(
             pos, vel, pos2, vel2, pos_correction)
 

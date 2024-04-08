@@ -47,7 +47,7 @@ def create_scene_files(scene_dir, scene_id, outfileprefix, splits=16):
     boring = False  # no fluid and rigid bodies dont move
     last_max_velocities = [1] * 20
 
-    for sublist_i, sublist in enumerate(sublists):
+    for sublist_i, sublist in enumerate(sublists):#know
         if boring:
             break
 
@@ -155,9 +155,9 @@ def main():
 
     for scene_dir in scene_dirs:
         print(scene_dir)
-        scene_name = os.path.basename(scene_dir)
+        scene_name = os.path.basename(scene_dir)#know
         print(scene_name)
-        outfileprefix = os.path.join(outdir, scene_name)
+        outfileprefix = os.path.join(outdir, scene_name)#know
         create_scene_files(scene_dir, scene_name, outfileprefix, args.splits)
 
 

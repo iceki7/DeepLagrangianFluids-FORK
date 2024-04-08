@@ -88,7 +88,7 @@ default_rigidbody = {
 default_fluidmodel = {"translation": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0]}
 
 
-def random_rotation_matrix(strength=None, dtype=None):
+def random_rotation_matrix(strength=None, dtype=None):#know
     """Generates a random rotation matrix 
     
     strength: scalar in [0,1]. 1 generates fully random rotations. 0 generates the identity. Default is 1.
@@ -127,7 +127,7 @@ def obj_volume_to_particles(objpath, scale=1, radius=None):
         status = subprocess.run([
             VOLUME_SAMPLING_BIN, '-i', objpath, '-o', outpath, '-r', radius_str,
             '-s', scale_str
-        ])
+        ])#zxc
         return numpy_from_bgeo(outpath)
 
 
@@ -234,6 +234,8 @@ def create_fluid_data(output_dir, seed, options):
 
     bounding_boxes = sorted(glob(os.path.join(SCRIPT_DIR, 'models',
                                               'Box*.obj')))
+                                              #zxc 每个box对应一个不同的Obj。
+
     # override bounding boxes
     if options.default_box:
         bounding_boxes = [os.path.join(SCRIPT_DIR, 'models', 'Box.obj')]
@@ -242,7 +244,7 @@ def create_fluid_data(output_dir, seed, options):
     rigid_shapes = sorted(
         glob(os.path.join(SCRIPT_DIR, 'models', 'RigidBody*.obj')))
 
-    num_objects = np.random.choice([1, 2, 3])
+    num_objects = np.random.choice([1, 2, 3])#know
     # override the number of objects to generate
     if options.num_objects > 0:
         num_objects = options.num_objects
@@ -250,12 +252,13 @@ def create_fluid_data(output_dir, seed, options):
     print('num_objects', num_objects)
 
     # create fluids and place them randomly
-    def create_fluid_object():
+    def create_fluid_object():#zxc 这里差不多就是流体各种随机变换的地方
         fluid_obj = np.random.choice(fluid_shapes)
         fluid = obj_volume_to_particles(fluid_obj,
-                                        scale=np.random.uniform(0.5, 1.5))[0]
+                                        scale=np.random.uniform(0.5, 1.5))[0]#zxc
+
         R = random_rotation_matrix(1.0)
-        fluid = fluid @ R
+        fluid = fluid @ R   #zxc know
 
         fluid_rasterized = rasterize_points(fluid, 2.01 * PARTICLE_RADIUS,
                                             PARTICLE_RADIUS)
@@ -303,6 +306,8 @@ def create_fluid_data(output_dir, seed, options):
 
         # convert bounding box to particles
         bb, bb_normals = obj_surface_to_particles(bb_obj)
+        #zxc。box转换成粒子和normal。
+
         bb_vol = obj_volume_to_particles(bb_obj)[0]
 
         # rasterize free volume
@@ -392,6 +397,7 @@ def create_fluid_data(output_dir, seed, options):
     # bounding box
     box_output_path = os.path.join(sim_directory, 'box.bgeo')
     write_bgeo_from_numpy(box_output_path, bb, bb_normals)
+    #zxc
 
     box_obj_output_path = os.path.join(sim_directory, 'box.obj')
     copyfile(bb_obj, box_obj_output_path)
@@ -421,11 +427,13 @@ def create_fluid_data(output_dir, seed, options):
         write_bgeo_from_numpy(fluid_output_path, obj['positions'],
                               obj['velocities'])
         fluid_model['particleFile'] = os.path.basename(fluid_output_path)
-        scene['FluidModels'].append(fluid_model)
+        scene['FluidModels'].append(fluid_model)#zxc fluid_model只有一种
 
     scene_output_path = os.path.join(sim_directory, 'scene.json')
     with open(scene_output_path, 'w') as f:
-        json.dump(scene, f, indent=4)
+        json.dump(scene, f, indent=4)  
+        #know     
+        #zxc 将场景特征写出到json，后续传给splish
 
     run_simulator(os.path.abspath(scene_output_path), sim_directory)
 
