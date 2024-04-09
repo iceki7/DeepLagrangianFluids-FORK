@@ -26,6 +26,9 @@ train_params = TrainParams(50 * _k, 0.001, 16)
 bvor=1
 bdebug=0
 
+storetensor=1
+storelist=1
+
 cut_thres=4.0
 jsoname="lowfluid7.json"
 # jsoname="lowfluid4.json"
@@ -33,7 +36,9 @@ jsoname="lowfluid7.json"
 jsoname="default.json"
 jsoname="multi-10.json"
 
-# jsoname="temp.json"
+jsoname="temp.json"
+jsoname="multi-10dense.json"
+
 # jsoname="lowfluid2cut.json"
 
 dt_frame=0.016
@@ -42,8 +47,13 @@ dt_frame=0.016
 
 
 #not prm
+iterall=0#全部遍历了一次
 yamlname="error"
+
 frameid=0
+framep=0
+segnum=0
+
 bcutsparse=0
 bevaluate=0
 mycnt=0
@@ -126,16 +136,32 @@ pos0dict[0]={}
 pos1dict[0]={}
 pos2dict[0]={}
 
+
+pos0list=[[]]
+pos1list=[[]]
+pos2list=[[]]
+
+boxplist=[]
+boxnlist=[]
+
+
+
+
 def mynext():#know
 
 #inf FROM PINN-TORCH
     from plyfile import PlyData
     import os
     global dtdir
-    global frameid,train_params
+    global gap
+    global frameid,framep,train_params
     global bmultiscene,sceneidx,scenenum
     global mycnt
+    global iterall,segnum
 
+
+
+    
 
 
 
@@ -152,41 +178,80 @@ def mynext():#know
     batch['box_normals']=[]
 
     for j in range(0,train_params.batch_size):#prm
-    
-        if(frameid in pos0dict[sceneidx]):#之前已经采样过，就不要重新读文件了 know
-            pos0=pos0dict[sceneidx][frameid]
-            pos1=pos1dict[sceneidx][frameid]
-            pos2=pos2dict[sceneidx][frameid]
+        if(iterall):#已经遍历过整个dt一次，就不要重新读文件了
+
+            if(storelist):
+                pos0=pos0list[sceneidx][framep]
+                pos1=pos1list[sceneidx][framep]
+                pos2=pos2list[sceneidx][framep]
+
+
+                boxp=boxplist[sceneidx]
+                boxn=boxnlist[sceneidx]
+
+            else:
+                pos0=pos0dict[sceneidx][frameid]
+                pos1=pos1dict[sceneidx][frameid]
+                pos2=pos2dict[sceneidx][frameid]
+
+
+                boxp=boxpdict[sceneidx]
+                boxn=boxndict[sceneidx]
+
         # print('sample '+str(frameid))
         else:
             pos0=get1ply(posname+f"{frameid+0}.ply")
             pos1=get1ply(posname+f"{frameid+1}.ply")
             pos2=get1ply(posname+f"{frameid+2}.ply")
 
-            pos0dict[sceneidx][frameid]=pos0
-            pos1dict[sceneidx][frameid]=pos1
-            pos2dict[sceneidx][frameid]=pos2
+
+            boxp=np.load(dtdir+"bp-"+basescene+"-r"+str(sceneidx)+".npy")
+            boxn=np.load(dtdir+"bn-"+basescene+"-r"+str(sceneidx)+".npy")
+
+            segnum+=1
+
+
+            if(storetensor):
+                pos0=tf.convert_to_tensor(pos0)
+                pos1=tf.convert_to_tensor(pos1)
+                pos2=tf.convert_to_tensor(pos2)
+
+                boxp=tf.convert_to_tensor(boxp)
+                boxn=tf.convert_to_tensor(boxn)
+
+            if(storelist):
+                pos0list[sceneidx].append(pos0)
+                pos1list[sceneidx].append(pos1)
+                pos2list[sceneidx].append(pos2)
+
+                if(frameid==left):
+                    boxplist.append(boxp)
+                    boxnlist.append(boxn)
+            else:
+                pos0dict[sceneidx][frameid]=pos0
+                pos1dict[sceneidx][frameid]=pos1
+                pos2dict[sceneidx][frameid]=pos2
+
+                boxpdict[sceneidx]=boxp
+                boxndict[sceneidx]=boxn
 
 
         batch['pos0'].append(pos0)
         batch['pos1'].append(pos1)
         batch['pos2'].append(pos2)
 
+        batch['box'].        append(boxp)
+        batch['box_normals'].append(boxn)
 
         # batch['vel0'].append(get1ply(velname+f"{frameid}.ply"))
         batch['vel0'].append((pos1-pos0)/dt_frame)
 
-        if(sceneidx in boxpdict):
-            boxp=boxpdict[sceneidx]
-            boxn=boxndict[sceneidx]
-        else:
+        # print('tensor vel0')
+        # print(batch['vel0'][0].shape)
+        # print(type(batch['vel0'][0]))
+        # exit(0)
 
-            boxp=np.load(dtdir+"bp-"+basescene+"-r"+str(sceneidx)+".npy")
-            boxn=np.load(dtdir+"bn-"+basescene+"-r"+str(sceneidx)+".npy")
-            
-            boxpdict[sceneidx]=boxp
-            boxndict[sceneidx]=boxn
-        
+
         if(bdebug):
             if(frameid==left):
                 print('[boxp shape]')
@@ -197,25 +262,58 @@ def mynext():#know
                 exit(0)
         
 
-        batch['box'].        append(boxp)
-        batch['box_normals'].append(boxn)
-
         frameid+=gap
+        framep+=1
+
         if(frameid>right or frameid+2>right):#一个场景遍历完了
             frameid=left
+            framep=0
 
             if(bmultiscene):
                 sceneidx+=1
-                
-                while(sceneidx in [4,9]):
+
+                while(sceneidx in [4,9]):#缺失场景
                     sceneidx+=1
 
-                if(sceneidx==scenenum):
+                    if(sceneidx-1 in [4,9]):
+                        if(storelist):
+                            if(iterall==0):
+                                pos0list.append([])
+                                pos1list.append([])
+                                pos2list.append([])
+
+                                boxplist.append([])
+                                boxnlist.append([])
+
+
+                if(sceneidx==scenenum):#全部遍历完了
                     sceneidx=0
+
+                    if(iterall==0):
+                        print('<all dt>')
+                        print('seg num')
+                        print(segnum)
+                        mycnt+=1
+                        print('sceneidx'+str(sceneidx))
+                        print('frameid'+str(frameid))
+                        print('framep\t'+str(framep))
+
+                        print(len(pos0list))
+                        print(pos0list[0][0].shape)
+                        print(len(boxplist))
+                        print(boxplist[0].shape)
+
+                        iterall=1
+                 
+
                 else:
                     pos0dict[sceneidx]={}
                     pos1dict[sceneidx]={}
                     pos2dict[sceneidx]={}
+
+                    pos0list.append([])
+                    pos1list.append([])
+                    pos2list.append([])
 
                 if(bdebug):
                     print('<scene '+str(sceneidx)+'>')
@@ -428,8 +526,11 @@ def main():
         #     exit(0)
         
         batch_tf = {}
-        for k in ('pos0', 'vel0', 'pos1', 'pos2', 'box', 'box_normals'):
-            batch_tf[k] = [tf.convert_to_tensor(x) for x in batch[k]]
+        if(storetensor):
+                batch_tf=batch
+        else:
+            for k in ('pos0', 'vel0', 'pos1', 'pos2', 'box', 'box_normals'):
+                batch_tf[k] = [tf.convert_to_tensor(x) for x in batch[k]]
         #know zxc 全部转成tf tensor
         
         data_fetch_latency = time.time() - data_fetch_start
