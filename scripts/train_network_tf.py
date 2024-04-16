@@ -16,6 +16,10 @@ from evaluate_network import evaluate_tf as evaluate
 
 import json
 
+# 会改变loss走向
+# tf.random.set_seed(1234)
+# np.random.seed(1234)
+
 
 _k = 1000
 #zxc max_iter
@@ -38,6 +42,8 @@ jsoname="multi-10.json"
 
 jsoname="temp.json"
 jsoname="multi-10dense.json"
+jsoname="lowfluidS.json"
+jsoname="lowfluidS39.json"
 
 # jsoname="lowfluid2cut.json"
 
@@ -272,10 +278,14 @@ def mynext():#know
             if(bmultiscene):
                 sceneidx+=1
 
-                while(sceneidx in [4,9]):#缺失场景
+                #缺失场景 prm
+                jumpscene=[1,3,5,7]
+                jumpscene=[1,3,5,7,13,23,24,27]
+
+                while(sceneidx in jumpscene):
                     sceneidx+=1
 
-                    if(sceneidx-1 in [4,9]):
+                    if(sceneidx-1 in jumpscene):
                         if(storelist):
                             if(iterall==0):
                                 pos0list.append([])
@@ -329,7 +339,7 @@ def mynext():#know
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Training script")
+    parser = argparse.ArgumentParser(description="Training script")#know
     parser.add_argument("cfg",
                         type=str,
                         help="The path to the yaml config file")

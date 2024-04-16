@@ -8,6 +8,7 @@ from glob import glob
 import time
 import importlib
 import json
+import time
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'datasets'))
 from physics_data_helper import numpy_from_bgeo, write_bgeo_from_numpy
 from create_physics_scenes import obj_surface_to_particles, obj_volume_to_particles
@@ -30,7 +31,7 @@ def write_particles(path_without_ext, pos, vel=None, options=None):
     if options and options.write_bgeo:
         write_bgeo_from_numpy(path_without_ext + '.bgeo', pos, vel)
 
-
+#zxc 验证集
 def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
                options):
 
@@ -38,6 +39,7 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
     model = trainscript_module.create_model()
     model.init()
     model.load_weights(weights_path, by_name=True)
+    #know
 
     # prepare static particles
     walls = []
@@ -72,6 +74,9 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
     vel = np.empty_like(pos)
 
     for step in range(num_steps):
+        # print('[num_steps]')
+        # print(num_steps)
+        # time.sleep(3000)
         # add from fluids to pos vel arrays
         for points, velocities, range_ in fluids:
             if step in range_:  # check if we have to add the fluid at this point in time
@@ -89,6 +94,7 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
 
             inputs = (pos, vel, None, box, box_normals)
             pos, vel = model(inputs)
+            #zxc 步长已经包含在model里了
 
         # remove out of bounds particles
         if step % 10 == 0:
