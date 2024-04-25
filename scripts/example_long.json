@@ -1,12 +1,21 @@
 {
     "walls":[
         {
-            "path":"../datasets/models/Box_010.obj",
+            "path":"../datasets/models/long.obj",
             "translation":[
                 0,
                 0,
                 0
             ]
+        },
+        {
+            "path":"../datasets/models/Fluid_001.obj",
+            "translation":[
+                0,
+                0,
+                0
+            ],
+            "invert_normals":1
         }
     ],
     "fluids":[
@@ -19,8 +28,8 @@
             ],
             "translation":[
                 0,
-                1,
-                0
+                0.6,
+                -3.0
             ],
             "start":0,
             "stop":1,

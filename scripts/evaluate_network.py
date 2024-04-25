@@ -55,6 +55,11 @@ def evaluate_tf(model, val_dataset, frame_skip, fluid_errors=None, scale=1):
                 inputs = (pr_pos1, pr_vel1, None, box, box_normals)
                 pr_pos2, pr_vel2 = model(inputs)
 
+                # print('-------evalu-------')
+                # print(scene_id)
+                # print(frame0_id)    
+                # print(gt_pos1.shape)#N 3 ,N由scene_id决定
+                
                 fluid_errors.add_errors(scene_id, frame0_id, frame1_id,
                                         scale * pr_pos1, scale * gt_pos1)
                 fluid_errors.add_errors(scene_id, frame0_id, frame2_id,
