@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 import os
 import numpy as np
 import sys
@@ -26,7 +27,9 @@ _k = 1000
 TrainParams = namedtuple('TrainParams', ['max_iter', 'base_lr', 'batch_size'])
 train_params = TrainParams(50 * _k, 0.001, 16)
 
-#prm
+prm_ccscene=0
+
+#prm-------------------
 bvor=1
 bdebug=0
 
@@ -44,9 +47,15 @@ jsoname="temp.json"
 jsoname="multi-10dense.json"
 jsoname="lowfluidS.json"
 jsoname="lowfluidS39.json"
+jsoname="lowfluidS100.json"
+jsoname="lowfluidS100cut.json"
+jsoname="cc40.json"
+jsoname="cc100.json"
+jsoname="cc100less.json"
+jsoname="csm40.json"
 
+prm_ccscene=1
 # jsoname="lowfluid2cut.json"
-
 dt_frame=0.016
 
 
@@ -71,6 +80,14 @@ else:
 sceneidx=0
 
 
+# +
+if(prm_ccscene):
+    sceneidlist=np.load("sceneidlist.npy")
+    
+
+    
+# -
+
 
 if(bvor):
     #json存储训练超参数
@@ -90,6 +107,12 @@ if(bvor):
     bmultiscene=jsondata['multiscene']
     scenenum=jsondata['scenenum']
     basescene=jsondata['basescene']
+    jumpscene=jsondata['jump']
+
+    if(bdebug):
+        print(jumpscene)
+        print(len(jumpscene))
+        exit(0)
 
     train_params = TrainParams(
         jsondata['max_iter'],
@@ -101,8 +124,8 @@ if(bvor):
     frameid=left
 
 
-#prm
-#每隔_k，evaluate一次.  _k会打印在训练时间左边
+# prm
+# 每隔_k，evaluate一次.  _k会打印在训练时间左边
 
 
 def create_model(**kwargs):
@@ -160,19 +183,14 @@ def mynext():#know
     import os
     global dtdir
     global gap
-    global frameid,framep,train_params
+    global frameid,framep
+    global train_params
     global bmultiscene,sceneidx,scenenum
     global mycnt
     global iterall,segnum
+    global prm_ccscene
 
 
-
-    
-
-
-
-    posname=dtdir+basescene+"-r"+str(sceneidx)+"_output/particle_object_0_"
-    velname=dtdir+basescene+"-r"+ str(sceneidx)+"_output/velocity_object_0_"
 
 
     batch={}
@@ -206,14 +224,34 @@ def mynext():#know
 
         # print('sample '+str(frameid))
         else:
+            posname=dtdir+basescene+"-r"+str(sceneidx)+"_output/particle_object_0_"
+            velname=dtdir+basescene+"-r"+str(sceneidx)+"_output/velocity_object_0_"
+            
+            posname=dtdir+basescene+str(sceneidx+1)+"_output/particle_object_0_"
+            velname=dtdir+basescene+str(sceneidx+1)+"_output/velocity_object_0_"
+
             pos0=get1ply(posname+f"{frameid+0}.ply")
             pos1=get1ply(posname+f"{frameid+1}.ply")
             pos2=get1ply(posname+f"{frameid+2}.ply")
 
+            if(prm_ccscene==0):
+                boxp=np.load(dtdir+"bp-"+basescene+"-r"+str(sceneidx)+".npy")
+                boxn=np.load(dtdir+"bn-"+basescene+"-r"+str(sceneidx)+".npy")
+            else:
+#                 boxp=np.load("../datasets/Box_"+ str(sceneidlist[sceneidx])+".npy")
+#                 boxn=np.load("../datasets/BoxN_"+str(sceneidlist[sceneidx])+".npy")
 
-            boxp=np.load(dtdir+"bp-"+basescene+"-r"+str(sceneidx)+".npy")
-            boxn=np.load(dtdir+"bn-"+basescene+"-r"+str(sceneidx)+".npy")
 
+
+                    #csm
+                cconvboxid=0
+                with open("../datasets/csm/sim_{0:04d}/scene.json".format(sceneidx+1), "r") as f:
+                    cconvboxid = json.load(f)["RigidBodies"][0]["boxid"]
+                boxp=np.load("../datasets/Box_"+ str(cconvboxid)+".npy")
+                boxn=np.load("../datasets/BoxN_"+str(cconvboxid)+".npy")
+
+                
+                
             segnum+=1
 
 
@@ -277,11 +315,16 @@ def mynext():#know
 
             if(bmultiscene):
                 sceneidx+=1
-
+                # print('[posname]')
+                # print(posname)
                 #缺失场景 prm
                 jumpscene=[1,3,5,7]
                 jumpscene=[1,3,5,7,13,23,24,27]
+                jumpscene=[1,3,5,7,13,23,24,27,43,51,53,54,63,67,82,86,93]
 
+                if(prm_ccscene):
+                    jumpscene=[]
+                    jumpscene=[47]
                 while(sceneidx in jumpscene):
                     sceneidx+=1
 
@@ -294,11 +337,13 @@ def mynext():#know
 
                                 boxplist.append([])
                                 boxnlist.append([])
-
-
-                if(sceneidx==scenenum):#全部遍历完了
+                
+             
+                if(sceneidx>=scenenum):#全部遍历完了
+                    
                     sceneidx=0
 
+              
                     if(iterall==0):
                         print('<all dt>')
                         print('seg num')
@@ -317,13 +362,14 @@ def mynext():#know
                  
 
                 else:
-                    pos0dict[sceneidx]={}
-                    pos1dict[sceneidx]={}
-                    pos2dict[sceneidx]={}
+                    if(iterall==0):
+                        pos0dict[sceneidx]={}
+                        pos1dict[sceneidx]={}
+                        pos2dict[sceneidx]={}
 
-                    pos0list.append([])
-                    pos1list.append([])
-                    pos2list.append([])
+                        pos0list.append([])
+                        pos1list.append([])
+                        pos2list.append([])
 
                 if(bdebug):
                     print('<scene '+str(sceneidx)+'>')
@@ -468,7 +514,7 @@ def main():
 
             if(bdebug):
                 tf.print(total_loss)
-                print(total_loss)#涡度数据是20多，default_data是2.多
+                print(total_loss)
 
             grads = tape.gradient(total_loss, model.trainable_variables)
             optimizer.apply_gradients(zip(grads, model.trainable_variables))
@@ -480,7 +526,7 @@ def main():
         print('[restore]')
         #zxc know
     
-    else:#add
+    else:
         print('[new model]')
 
     display_str_list = []

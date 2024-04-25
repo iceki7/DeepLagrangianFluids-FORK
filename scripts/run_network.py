@@ -15,11 +15,16 @@ from create_physics_scenes import obj_surface_to_particles, obj_volume_to_partic
 import open3d as o3d
 
 
+prm_only_test_vel=0
+
 def write_particles(path_without_ext, pos, vel=None, options=None):
     """Writes the particles as point cloud ply.
     Optionally writes particles as bgeo which also supports velocities.
     """
     arrs = {'pos': pos}
+
+
+    #know
     if not vel is None:
         arrs['vel'] = vel
     np.savez(path_without_ext + '.npz', **arrs)
@@ -47,6 +52,7 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
         points, normals = obj_surface_to_particles(x['path'])
         if 'invert_normals' in x and x['invert_normals']:
             normals = -normals
+            print('[invert normal]')
         points += np.asarray([x['translation']], dtype=np.float32)
         walls.append((points, normals))
     box = np.concatenate([x[0] for x in walls], axis=0)
@@ -72,7 +78,7 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
 
     pos = np.empty(shape=(0, 3), dtype=np.float32)
     vel = np.empty_like(pos)
-
+    starttime=time.time()
     for step in range(num_steps):
         # print('[num_steps]')
         # print(num_steps)
@@ -86,11 +92,13 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
         if pos.shape[0]:
             fluid_output_path = os.path.join(output_dir,
                                              'fluid_{0:04d}'.format(step))
-            if isinstance(pos, np.ndarray):
-                write_particles(fluid_output_path, pos, vel, options)
-            else:
-                write_particles(fluid_output_path, pos.numpy(), vel.numpy(),
-                                options)
+
+            if(prm_only_test_vel==0):
+                if isinstance(pos, np.ndarray):
+                    write_particles(fluid_output_path, pos, vel, options)
+                else:
+                    write_particles(fluid_output_path, pos.numpy(), vel.numpy(),
+                                    options)
 
             inputs = (pos, vel, None, box, box_normals)
             pos, vel = model(inputs)
@@ -104,6 +112,8 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
                 pos = pos[mask]
                 vel = vel[mask]
 
+    timeperframe=(time.time()-starttime)/num_steps
+    print('[cost]\t'+str(timeperframe)+'sec per frame\t')
 
 def run_sim_torch(trainscript_module, weights_path, scene, num_steps,
                   output_dir, options):
