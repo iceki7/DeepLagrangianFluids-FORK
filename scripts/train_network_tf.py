@@ -223,8 +223,9 @@ def mynext():#know
             posname=dtdir+basescene+"-r"+str(sceneidx)+"_output/particle_object_0_"
             velname=dtdir+basescene+"-r"+str(sceneidx)+"_output/velocity_object_0_"
             
-            posname=dtdir+basescene+str(sceneidx+1)+"_output/particle_object_0_"
-            velname=dtdir+basescene+str(sceneidx+1)+"_output/velocity_object_0_"
+            if(prm_cconvSceneConfig):#csm
+                posname=dtdir+basescene+str(sceneidx+1)+"_output/particle_object_0_"
+                velname=dtdir+basescene+str(sceneidx+1)+"_output/velocity_object_0_"
 
             pos0=get1ply(posname+f"{frameid+0}.ply")
             pos1=get1ply(posname+f"{frameid+1}.ply")
