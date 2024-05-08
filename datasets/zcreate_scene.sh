@@ -6,8 +6,11 @@
 
 # output directories
 
-OUTPUT_SCENES_DIR=csm #prm
-scenenum=200
+
+#prm_
+OUTPUT_SCENES_DIR=csm 
+lv=1
+rv=3
 
 # rm -r $OUTPUT_SCENES_DIR
 # mkdir $OUTPUT_SCENES_DIR
@@ -15,12 +18,12 @@ scenenum=200
 
 # This script is purely sequential but it is recommended to parallelize the
 # following loop, which generates the simulation data.
-for seed in `seq 1 $scenenum`; do #prm
+for seed in `seq $lv $rv`; do 
         python create_physics_scenes.py --output $OUTPUT_SCENES_DIR \
                                         --seed $seed \
                                         --default-viscosity \
                                         --default-density
 done
 
-python bgeo2npy.py --scenename=$OUTPUT_SCENES_DIR --scenenum=$scenenum
-cp -r  $OUTPUT_SCENES_DIR /w/cconv-dataset/sync
+python bgeo2npy.py --scenename=$OUTPUT_SCENES_DIR --lv=$lv --rv=$rv
+cp -r  $OUTPUT_SCENES_DIR /w/cconv-dataset/submodule/datasets

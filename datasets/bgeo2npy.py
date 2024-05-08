@@ -1,26 +1,39 @@
 from physics_data_helper import *
 import argparse
 
-scenenum=1
+rv=1
+lv=1
+
+#zxc
+#get Fluid POS and Vel
+
+
+
+
 parser = argparse.ArgumentParser(description="Creates physics sim data")
 parser.add_argument("--scenename",
                     type=str,
                     required=True,
                     help="The random seed for initialization")
-parser.add_argument("--scenenum",
+parser.add_argument("--rv",
+                    type=int,
+                    required=True,
+                    help="The random seed for initialization")
+
+parser.add_argument("--lv",
                     type=int,
                     required=True,
                     help="The random seed for initialization")
 args = parser.parse_args()
 scenename=args.scenename
-scenenum=args.scenenum
+rv=args.rv
+lv=args.lv
 partnum=0
 
-print('[[2 npy]]-----------------------')
-for i in range(1,scenenum+1):
+for i in range(lv,rv+1):
     # for fnum in 
     
-
+    print('[scene '+str(i)+' fluidpos √]')
     dr=scenename+"/sim_{0:04d}/".format(i)
     fluids = sorted(glob(dr+"fluid*.bgeo"))
     # print(len(fluids))
@@ -52,4 +65,4 @@ for i in range(1,scenenum+1):
     print(pperscene.shape)
     print('---------a scene')
 
-print('[av part num]\t'+str(partnum/scenenum))
+print('[av part num]\t'+str(partnum/(rv-lv+1)))
