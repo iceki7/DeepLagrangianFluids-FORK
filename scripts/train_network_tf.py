@@ -27,9 +27,10 @@ _k = 1000
 TrainParams = namedtuple('TrainParams', ['max_iter', 'base_lr', 'batch_size'])
 train_params = TrainParams(50 * _k, 0.001, 16)
 
-prm_ccscene=0
+
 
 #prm-------------------
+#如果是涡度数据，就忽略yaml
 bvor=1
 bdebug=0
 
@@ -53,8 +54,9 @@ jsoname="cc40.json"
 jsoname="cc100.json"
 jsoname="cc100less.json"
 jsoname="csm40.json"
+jsoname="csm200.json"
 
-prm_ccscene=1
+prm_cconvSceneConfig=1
 # jsoname="lowfluid2cut.json"
 dt_frame=0.016
 
@@ -80,13 +82,6 @@ else:
 sceneidx=0
 
 
-# +
-if(prm_ccscene):
-    sceneidlist=np.load("sceneidlist.npy")
-    
-
-    
-# -
 
 
 if(bvor):
@@ -107,7 +102,7 @@ if(bvor):
     bmultiscene=jsondata['multiscene']
     scenenum=jsondata['scenenum']
     basescene=jsondata['basescene']
-    jumpscene=jsondata['jump']
+    jumpscene=jsondata['jumpscene']
 
     if(bdebug):
         print(jumpscene)
@@ -188,7 +183,8 @@ def mynext():#know
     global bmultiscene,sceneidx,scenenum
     global mycnt
     global iterall,segnum
-    global prm_ccscene
+    global prm_cconvSceneConfig
+    global jumpscene
 
 
 
@@ -234,16 +230,12 @@ def mynext():#know
             pos1=get1ply(posname+f"{frameid+1}.ply")
             pos2=get1ply(posname+f"{frameid+2}.ply")
 
-            if(prm_ccscene==0):
+            if(prm_cconvSceneConfig==0):
                 boxp=np.load(dtdir+"bp-"+basescene+"-r"+str(sceneidx)+".npy")
                 boxn=np.load(dtdir+"bn-"+basescene+"-r"+str(sceneidx)+".npy")
             else:
-#                 boxp=np.load("../datasets/Box_"+ str(sceneidlist[sceneidx])+".npy")
-#                 boxn=np.load("../datasets/BoxN_"+str(sceneidlist[sceneidx])+".npy")
 
-
-
-                    #csm
+                #csm
                 cconvboxid=0
                 with open("../datasets/csm/sim_{0:04d}/scene.json".format(sceneidx+1), "r") as f:
                     cconvboxid = json.load(f)["RigidBodies"][0]["boxid"]
@@ -318,13 +310,7 @@ def mynext():#know
                 # print('[posname]')
                 # print(posname)
                 #缺失场景 prm
-                jumpscene=[1,3,5,7]
-                jumpscene=[1,3,5,7,13,23,24,27]
-                jumpscene=[1,3,5,7,13,23,24,27,43,51,53,54,63,67,82,86,93]
 
-                if(prm_ccscene):
-                    jumpscene=[]
-                    jumpscene=[47]
                 while(sceneidx in jumpscene):
                     sceneidx+=1
 
