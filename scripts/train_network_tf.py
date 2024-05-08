@@ -325,7 +325,8 @@ def mynext():#know
                                 boxplist.append([])
                                 boxnlist.append([])
                 
-             
+                
+                print('[sceneidx '+str(sceneidx)+']')
                 if(sceneidx>=scenenum):#全部遍历完了
                     
                     sceneidx=0
