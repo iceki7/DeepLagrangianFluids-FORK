@@ -9,7 +9,7 @@
     "cutsparse":0,
     "multiscene":1,
     "scenenum":200,
-    "jumpscene":[13,43,49,62,74,117,128,130,138,155,174,179],
+    "jumpscene":[13,43,49,62,74,117,128,138,155,174,179],
     "basescene":"csm_mp_",
     "dtdir":"/w/cconv-dataset/mcvsph-dataset/csm_mp/"
 
