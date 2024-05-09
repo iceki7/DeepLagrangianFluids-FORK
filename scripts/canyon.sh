@@ -1,7 +1,7 @@
 modelname1=lowfluidS100
 
 cd /workspace/DeepLagrangianFluids/scenes/
-
+# 使用未fork版本的代码
 ../scripts/run_network.py --weights /workspace/DeepLagrangianFluids-FORK/scripts/$modelname1.h5 \
                           --scene canyon_scene.json \
                           --output canyon_$modelname1 \
