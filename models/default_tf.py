@@ -6,6 +6,8 @@ import sys
 sys.path.append('../scripts/') 
 from train_network_tf import bvor,dt_frame
 
+tempcnt=0
+
 class MyParticleNetwork(tf.keras.Model):
 
     def __init__(self,
@@ -172,6 +174,50 @@ class MyParticleNetwork(tf.keras.Model):
         self.pos_correction = (1.0 / 128) * self.ans_convs[-1]
         return self.pos_correction
         #zxc
+    def call2(self,model2, inputs,step,num_steps, fixed_radius_search_hash_table=None):
+        #zxc 前向过程
+        
+        """computes 1 simulation timestep
+        inputs: list or tuple with (pos,vel,feats,box,box_feats)
+          pos and vel are the positions and velocities of the fluid particles.
+          feats is reserved for passing additional features, use None here.
+
+        zxc
+          box are the positions of the static particles and box_feats are the
+          normals of the static particles.
+        """
+        pos, vel, feats, box, box_feats = inputs
+
+        #zxc 简单施加重力后的结果
+        pos2, vel2 = self.integrate_pos_vel(pos, vel)
+
+        #zxc 仅这一步用nn
+        pos_correction1 = self.compute_correction(
+            pos2, vel2, feats, box, box_feats, fixed_radius_search_hash_table)
+        pos_correction2=model2.compute_correction(
+            pos2, vel2, feats, box, box_feats, fixed_radius_search_hash_table)
+
+        alpha=0.5
+        global tempcnt
+        tempcnt+=1
+        ratio=step/num_steps
+        
+        alpha=float(ratio)
+        alpha=float(ratio)**3
+        if(step%50==0):
+            print('[alpha]\t'+str(alpha))
+
+            #一次会输出一个场景中所有位置的矫正
+            # temp=pos_correction1.cpu().numpy()
+            # print(temp.shape)
+        pos_correction=(1-alpha)*(pos_correction1)+alpha*pos_correction2
+
+        
+        #zxc 先矫正位置，然后反推速度
+        pos2_corrected, vel2_corrected = self.compute_new_pos_vel(
+            pos, vel, pos2, vel2, pos_correction)
+
+        return pos2_corrected, vel2_corrected
 
     def call(self, inputs, fixed_radius_search_hash_table=None):
         #zxc 前向过程

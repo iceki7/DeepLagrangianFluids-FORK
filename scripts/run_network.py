@@ -17,6 +17,10 @@ import open3d as o3d
 
 prm_only_test_vel=0
 
+
+prm_mix=0
+prm_mixmodel="error"
+
 def write_particles(path_without_ext, pos, vel=None, options=None):
     """Writes the particles as point cloud ply.
     Optionally writes particles as bgeo which also supports velocities.
@@ -45,6 +49,12 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
     model.init()
     model.load_weights(weights_path, by_name=True)
     #know
+    if(prm_mix):
+        model2 = trainscript_module.create_model()
+        model2.init()
+        model2.load_weights(prm_mixmodel, by_name=True)
+
+
 
     # prepare static particles
     walls = []
@@ -101,8 +111,17 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
                                     options)
 
             inputs = (pos, vel, None, box, box_normals)
-            pos, vel = model(inputs)
-            #zxc 步长已经包含在model里了
+            if(prm_mix):
+                pos, vel = model.call2(model2=model2,
+                                       inputs=inputs,
+                                       step=step,
+                                       num_steps=num_steps)
+                
+              
+            else:
+                
+                pos, vel = model(inputs)
+                #zxc 步长已经包含在model里了
 
         # remove out of bounds particles
         if step % 10 == 0:
@@ -232,8 +251,23 @@ def main():
                         default='cuda',
                         help="The device to use. Applies only for torch.")
 
+    parser.add_argument("--prm_mix",
+                        type=bool,
+                        default=False,
+                        help="The device to use. Applies only for torch.")
+
+    parser.add_argument("--prm_mixmodel",
+                        type=str,
+                        default="error",
+                        help="The device to use. Applies only for torch.")
+
     args = parser.parse_args()
     print(args)
+    global prm_mix,prm_mixmodel
+    
+    prm_mix=args.prm_mix
+    prm_mixmodel=args.prm_mixmodel
+
 
     module_name = os.path.splitext(os.path.basename(args.trainscript))[0]
     sys.path.append('.')
