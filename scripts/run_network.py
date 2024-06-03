@@ -13,13 +13,18 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'datasets'))
 from physics_data_helper import numpy_from_bgeo, write_bgeo_from_numpy
 from create_physics_scenes import obj_surface_to_particles, obj_volume_to_particles
 import open3d as o3d
+from write_ply import write_ply
 
+prm_only_test_vel=1
 
-prm_only_test_vel=0
+#仅输出初始场景的信息，通过generalish.sh使用
+prm_outputInitScene=1
+
 
 
 prm_mix=0
 prm_mixmodel="error"
+
 
 def write_particles(path_without_ext, pos, vel=None, options=None):
     """Writes the particles as point cloud ply.
@@ -102,6 +107,40 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
         if pos.shape[0]:
             fluid_output_path = os.path.join(output_dir,
                                              'fluid_{0:04d}'.format(step))
+            if(prm_outputInitScene):
+                if(step!=0):
+                    break
+                print('[outputInitScne]')
+                print(box.shape)
+                print(pos.shape)
+                write_ply(
+                    path="./temp/box-",
+                    frame_num=1,
+
+                    dim=3,
+                    num=box.shape[0],
+                    pos=box)
+                write_ply(
+                    path="./temp/boxn-",
+                    frame_num=1,
+
+                    dim=3,
+                    num=box_normals.shape[0],
+                    pos=box_normals)
+                write_ply(
+                    path="./temp/fluid-pos",
+                    frame_num=1,
+                    dim=3,
+                    num=pos.shape[0],
+                    pos=pos)
+                write_ply(
+                    path="./temp/fluid-vel",
+                    frame_num=1,
+
+                    dim=3,
+                    num=vel.shape[0],
+                    pos=vel)
+
 
             if(prm_only_test_vel==0):
                 if isinstance(pos, np.ndarray):
