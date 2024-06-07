@@ -54,7 +54,13 @@ jsoname="cc40.json"
 jsoname="cc100.json"
 jsoname="cc100less.json"
 jsoname="csm40.json"
-jsoname="csm200.json"
+jsoname="tempcsm_mp100.json"
+jsoname="csm_mp300.json"
+jsoname="csm_mp300g3.json"
+jsoname="csm300.json"
+
+
+
 
 prm_cconvSceneConfig=1
 # jsoname="lowfluid2cut.json"
@@ -224,6 +230,8 @@ def mynext():#know
             velname=dtdir+basescene+"-r"+str(sceneidx)+"_output/velocity_object_0_"
             
             if(prm_cconvSceneConfig):#csm
+                if(iterall==0):
+                    print('[reading file...],sceneidx='+str(sceneidx))
                 posname=dtdir+basescene+str(sceneidx+1)+"_output/particle_object_0_"
                 velname=dtdir+basescene+str(sceneidx+1)+"_output/velocity_object_0_"
 
@@ -393,25 +401,21 @@ def main():
     train_dir = os.path.splitext(
         os.path.basename(__file__))[0] + '_' + os.path.splitext(
             os.path.basename(args.cfg))[0]
+    if(bvor==0):
+        val_files = sorted(glob(os.path.join(cfg['dataset_dir'], 'valid', '*.zst')))
+        train_files = sorted(
+            glob(os.path.join(cfg['dataset_dir'], 'train', '*.zst')))
+            #zxc
+        val_dataset = read_data_val(files=val_files, window=1, cache_data=True)
 
-    val_files = sorted(glob(os.path.join(cfg['dataset_dir'], 'valid', '*.zst')))
-    train_files = sorted(
-        glob(os.path.join(cfg['dataset_dir'], 'train', '*.zst')))
-        #zxc
-
-    val_dataset = read_data_val(files=val_files, window=1, cache_data=True)
-    #zxc
-
-    dataset = read_data_train(files=train_files,
-                              batch_size=train_params.batch_size,
-                              window=3,
-                              num_workers=2,
-                              **cfg.get('train_data', {}))
-    # print('zxc dataset')
-    # print(type(dataset))
-
-
-    data_iter = iter(dataset)
+        dataset = read_data_train(files=train_files,
+                                batch_size=train_params.batch_size,
+                                window=3,
+                                num_workers=2,
+                                **cfg.get('train_data', {}))
+        # print('zxc dataset')
+        # print(type(dataset))
+        data_iter = iter(dataset)
 
     # print(type(data_iter))
     # print(data_iter.shape)
