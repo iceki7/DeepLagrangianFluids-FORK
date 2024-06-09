@@ -1,0 +1,17 @@
+{
+    "left": 1,
+    "right": 240,
+    "gap": 3,
+    "max_iter": 50000,
+    "base_lr": 0.001,
+    "batch_size": 16,
+    "_k": 1000,
+    "cutsparse":0,
+    "multiscene":1,
+    "scenenum":300,
+    "jumpscene":[13,43,49,62,74,117,128,138,155,174,179,211,225,236,269],
+    "basescene":"csm_mp_",
+    "dtdir":"/w/cconv-dataset/mcvsph-dataset/csm_mp/"
+
+
+}
