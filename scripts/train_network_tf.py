@@ -18,8 +18,9 @@ from evaluate_network import evaluate_tf as evaluate
 import json
 
 # 会改变loss走向
-# tf.random.set_seed(1234)
-# np.random.seed(1234)
+tf.random.set_seed(1234)
+tf.compat.v1.set_random_seed(1234)
+np.random.seed(1234)
 
 
 _k = 1000
@@ -58,6 +59,10 @@ jsoname="tempcsm_mp100.json"
 jsoname="csm_mp300.json"
 jsoname="csm_mp300g3.json"
 jsoname="csm300.json"
+jsoname="temp.json"
+jsoname="csm_df300.json"
+
+
 
 
 
@@ -139,7 +144,6 @@ def get1ply(filename):
     import os
 
     #know 没找到文件会报错
-    plydata = PlyData.read(filename)
     plydata = PlyData.read(filename)
 
     vertex =  plydata ['vertex']
