@@ -11,16 +11,23 @@ from collections import namedtuple
 from glob import glob
 import time
 import tensorflow as tf
+
+# 会改变loss走向
+tf.random.set_seed(1234)
+tf.compat.v1.set_random_seed(1234)
+np.random.seed(1234)
+
+# print('\n\n\n[train]\n\n\n')
+# xx=tf.random.normal((1,1))
+# print(xx)
+
+
 from utils.deeplearningutilities.tf import Trainer, MyCheckpointManager
 from evaluate_network import evaluate_tf as evaluate
 #zxc  ie evaluating...(validate ds)
 
 import json
 
-# 会改变loss走向
-tf.random.set_seed(1234)
-tf.compat.v1.set_random_seed(1234)
-np.random.seed(1234)
 
 
 _k = 1000
@@ -60,7 +67,7 @@ jsoname="csm_mp300.json"
 jsoname="csm_mp300g3.json"
 jsoname="csm300.json"
 jsoname="temp.json"
-jsoname="csm_df300.json"
+# jsoname="csm_df300.json"
 
 
 

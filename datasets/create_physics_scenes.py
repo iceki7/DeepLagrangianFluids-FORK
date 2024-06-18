@@ -189,7 +189,7 @@ def obj_volume_to_particles(objpath, scale=1, radius=None):
         outpath = os.path.join(tmpdir, 'out.bgeo')
         scale_str = '{0}'.format(scale)
         radius_str = str(radius)
-        status = subprocess.run([
+        status = subprocess.run([#know
             VOLUME_SAMPLING_BIN, '-i', objpath, '-o', outpath, '-r', radius_str,
             '-s', scale_str
         ])#zxc
@@ -203,7 +203,10 @@ def obj_surface_to_particles(objpath, radius=None):
     particle_area = np.pi * radius**2
     # 1.9 to roughly match the number of points of SPlisHSPlasHs surface sampling
     num_points = int(1.9 * obj.get_surface_area() / particle_area)
-    pcd = obj.sample_points_poisson_disk(num_points, use_triangle_normal=True)
+    pcd = obj.sample_points_poisson_disk(num_points, use_triangle_normal=True,\
+    seed=1234)
+    #zxc random
+
     points = np.asarray(pcd.points).astype(np.float32)
     normals = -np.asarray(pcd.normals).astype(np.float32)
     return points, normals

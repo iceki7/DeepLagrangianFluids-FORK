@@ -9,22 +9,38 @@ import time
 import importlib
 import json
 import time
+import hashlib
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'datasets'))
 from physics_data_helper import numpy_from_bgeo, write_bgeo_from_numpy
 from create_physics_scenes import obj_surface_to_particles, obj_volume_to_particles
 import open3d as o3d
 from write_ply import write_ply
+np.random.seed(1234)
 
-prm_only_test_vel=1
+
+eps=4
+prm_round=0
+
+# xx=tf.random.normal((1,1))
+# print('\n\n\n[run]\n\n\n')
+# print(xx)
+
+
+prm_only_test_vel=0
 
 #仅输出初始场景的信息，通过generalish.sh使用
-prm_outputInitScene=1
+prm_outputInitScene=0
 
 
 
 prm_mix=0
 prm_mixmodel="error"
-
+def hashm(velocities):
+    tt = tuple(tuple(row) for row in velocities) 
+    matrix_str = str(tt)  
+    # 使用哈希函数计算哈希值  
+    hashh = hashlib.md5(matrix_str.encode()).hexdigest()   
+    return hashh
 
 def write_particles(path_without_ext, pos, vel=None, options=None):
     """Writes the particles as point cloud ply.
@@ -36,7 +52,9 @@ def write_particles(path_without_ext, pos, vel=None, options=None):
     #know
     if not vel is None:
         arrs['vel'] = vel
-    np.savez(path_without_ext + '.npz', **arrs)
+
+    #prm_
+    # np.savez(path_without_ext + '.npz', **arrs)
 
     if options and options.write_ply:
         pcd = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(pos))
@@ -50,15 +68,32 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
                options):
 
     # init the network
+
+    stm=time.time()
     model = trainscript_module.create_model()
     model.init()
     model.load_weights(weights_path, by_name=True)
     #know
     if(prm_mix):
+        print('[mix]')
         model2 = trainscript_module.create_model()
         model2.init()
         model2.load_weights(prm_mixmodel, by_name=True)
+        #注意加载参数，却不会加载dt和gravity。它是在create_model时确定的
 
+        model3 = trainscript_module.create_model()
+        model3.init()
+        model3.load_weights("pretrained_model_weights.h5", by_name=True)
+        #prm_
+
+        model4 = trainscript_module.create_model()
+        model4.init()
+        model4.load_weights(prm_mixmodel, by_name=True)
+    else:
+        print('[single]')
+    #COPY
+    etm=time.time()
+    print('[models loading time](s)\t'+str(etm-stm))
 
 
     # prepare static particles
@@ -94,6 +129,9 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
     pos = np.empty(shape=(0, 3), dtype=np.float32)
     vel = np.empty_like(pos)
     starttime=time.time()
+    if(prm_round):
+        points=    np.round(points,    eps)
+        velocities=np.round(velocities,eps)
     for step in range(num_steps):
         # print('[num_steps]')
         # print(num_steps)
@@ -146,32 +184,64 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
                 if isinstance(pos, np.ndarray):
                     write_particles(fluid_output_path, pos, vel, options)
                 else:
+                    # prm_
+                    # from write_ply import write_plyIdx
+                    # write_plyIdx(path=fluid_output_path,
+                    # frame_num=step,
+                    # num=pos.shape[0],
+                    # pos=pos)
+
                     write_particles(fluid_output_path, pos.numpy(), vel.numpy(),
                                     options)
 
+            #检查网络随机性
+            # pos=np.random.rand(*pos.shape)
+            # vel=np.random.rand(*vel.shape)
+            # box=np.random.rand(*box.shape)
+            # box_normals=np.random.rand(*box_normals.shape)
+
             inputs = (pos, vel, None, box, box_normals)
+            if(prm_round):
+                pos=np.round(pos,eps)
+                vel=np.round(vel,eps)
             if(prm_mix):
                 pos, vel = model.call2(model2=model2,
+                                       model3=model3,
+                                       model4=model4, 
                                        inputs=inputs,
                                        step=step,
                                        num_steps=num_steps)
                 
               
             else:
-                
-                pos, vel = model(inputs)
-                #zxc 步长已经包含在model里了
+                # print('[pretype inputs]')
+                # print(type(inputs[1]))#tensor
+                pos, vel = model(inputs)#numpy
+                if(prm_round):
+                    pos=np.round(pos,eps)
+                    vel=np.round(vel,eps)
 
+
+                #zxc 步长已经包含在model里了
+        
+        #zxc 或许不要更好
         # remove out of bounds particles
         if step % 10 == 0:
+            #prm_
             print(step, 'num particles', pos.shape[0])
-            mask = pos[:, 1] > min_y
-            if np.count_nonzero(mask) < pos.shape[0]:
-                pos = pos[mask]
-                vel = vel[mask]
+            # mask = pos[:, 1] > min_y
+            # if np.count_nonzero(mask) < pos.shape[0]:
+            #     pos = pos[mask]
+            #     vel = vel[mask]
 
     timeperframe=(time.time()-starttime)/num_steps
+    print('[choosetimes]\t'+str(model.choosetimes))
     print('[cost]\t'+str(timeperframe)+'sec per frame\t')
+    np.savez(output_dir + '.npz',
+        mat1=model.aenergy,\
+        mat2=model.adelta_energy,\
+        mat3=model.choosetimes,
+        mat4=model.chooseorder)
 
 def run_sim_torch(trainscript_module, weights_path, scene, num_steps,
                   output_dir, options):

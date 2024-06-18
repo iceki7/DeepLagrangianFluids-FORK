@@ -5,8 +5,11 @@ import numpy as np
 import sys
 sys.path.append('../scripts/') 
 from train_network_tf import bvor,dt_frame
+# np.set_printoptions(precision=100)
 
 tempcnt=0
+prm_maxenergy=0
+
 
 class MyParticleNetwork(tf.keras.Model):
 
@@ -78,6 +81,7 @@ class MyParticleNetwork(tf.keras.Model):
 
         self.conv0_fluid = Conv(name="conv0_fluid",
                                 filters=self.layer_channels[0],
+                                #32 channel
                                 activation=None)
         self.conv0_obstacle = Conv(name="conv0_obstacle",
                                    filters=self.layer_channels[0],
@@ -138,6 +142,7 @@ class MyParticleNetwork(tf.keras.Model):
 
         fluid_feats = tf.concat(fluid_feats, axis=-1)
 
+        #zxc 这里才是正向执行，Init里只是搭建网络
         self.ans_conv0_fluid = self.conv0_fluid(fluid_feats, pos, pos,
                                                 filter_extent)
         self.ans_dense0_fluid = self.dense0_fluid(fluid_feats)
@@ -174,7 +179,8 @@ class MyParticleNetwork(tf.keras.Model):
         self.pos_correction = (1.0 / 128) * self.ans_convs[-1]
         return self.pos_correction
         #zxc
-    def call2(self,model2, inputs,step,num_steps, fixed_radius_search_hash_table=None):
+    def call2(self,model2,model3,model4,\
+    inputs,step,num_steps, fixed_radius_search_hash_table=None):
         #zxc 前向过程
         
         """computes 1 simulation timestep
@@ -188,14 +194,26 @@ class MyParticleNetwork(tf.keras.Model):
         """
         pos, vel, feats, box, box_feats = inputs
 
+
+        # _vel=vel.numpy()
+        _vel=vel    #is numpy
+        energy=np.sum(_vel**2)
+        print('[energy]\t'+str(energy))
+    
+
         #zxc 简单施加重力后的结果
         pos2, vel2 = self.integrate_pos_vel(pos, vel)
+        _vel2=vel2.numpy()
 
         #zxc 仅这一步用nn
         pos_correction1 = self.compute_correction(
             pos2, vel2, feats, box, box_feats, fixed_radius_search_hash_table)
         pos_correction2=model2.compute_correction(
             pos2, vel2, feats, box, box_feats, fixed_radius_search_hash_table)
+        pos_correction3=model3.compute_correction(
+            pos2, vel2, feats, box, box_feats, fixed_radius_search_hash_table)
+
+
 
         alpha=0.5
         global tempcnt
@@ -210,12 +228,58 @@ class MyParticleNetwork(tf.keras.Model):
             #一次会输出一个场景中所有位置的矫正
             # temp=pos_correction1.cpu().numpy()
             # print(temp.shape)
-        pos_correction=(1-alpha)*(pos_correction1)+alpha*pos_correction2
+        # pos_correction=(1-alpha)*(pos_correction1)+alpha*pos_correction2
+
+        pos_corrections=[pos_correction1,pos_correction2,pos_correction3]
+
+
+
+
+
+        _pos_correction1=pos_corrections[1-1].cpu().numpy()
+        _pos_correction2=pos_corrections[2-1].cpu().numpy()
+        _pos_correction3=pos_corrections[3-1].cpu().numpy()
+
+        dv1=_pos_correction1/self.timestep
+        dv2=_pos_correction2/self.timestep
+        dv3=_pos_correction3/self.timestep
+
+        delta_energy1=np.sum((dv1**2)+2*_vel2*dv1)
+        delta_energy2=np.sum((dv2**2)+2*_vel2*dv2)
+        delta_energy3=np.sum((dv3**2)+2*_vel2*dv3)
+
+        delta_energys=np.array([delta_energy1,delta_energy2,delta_energy3])
+        idxmin=np.argmin(delta_energys)
+        idxmax=np.argmax(delta_energys)
+        
+        
+
+        # print('[delta E]\t'+str(delta_energy[1-1]))
+
+        if(prm_maxenergy):
+            pos_correction= pos_corrections[idxmax]   
+            print('[choose]\t'+str(idxmax)) 
+        else:
+            pos_correction= pos_corrections[idxmin]
+            print('[choose]\t'+str(idxmin)) 
+
+    
+
+        # print('[vel mean]')
+        # print(np.mean(_pos_correction1))
+        # print(np.mean(_pos_correction2))
+        # print(np.mean(_pos_correction))
+
+
 
         
         #zxc 先矫正位置，然后反推速度
         pos2_corrected, vel2_corrected = self.compute_new_pos_vel(
             pos, vel, pos2, vel2, pos_correction)
+
+        
+        print('--------------------------------')
+
 
         return pos2_corrected, vel2_corrected
 
