@@ -1,12 +1,19 @@
 num_steps=250
+num_steps=10
 num_steps=400
-# num_steps=1000
+num_steps=1000
+
 modelname1=csm_df300
 modelname2=csm_mp300
-# scnename=mc_ball_2velx_0602
-scnename=example_static
+
+scnename=mc_ball_2velx_0602
+# scnename=example_static
+
+testname=emax3_
 testname=emin3_
-testname=pw_
+testname=pw_max_
+testname=pw_min_
+
 
 ckpt=_50k
 syncdir=/w/cconv-dataset/sync/
@@ -31,6 +38,8 @@ rm -r $outputdir
 
 
 cd $syncdir
+
+rm  $filename.zip
 
 zip -rq  $filename.zip \
          $filename

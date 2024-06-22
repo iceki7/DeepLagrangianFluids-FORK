@@ -19,7 +19,7 @@ from write_ply import write_ply
 np.random.seed(1234)
 
 
-prm_maxenergy=1
+prm_maxenergy=0
 prm_pointwise=1
 
 eps=4
@@ -246,7 +246,7 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
         mat1=model.aenergy,\
         mat2=model.adelta_energy,\
         mat3=model.mtimes,
-        mat4=(morder_pointwise if prm_pointwise else morder))
+        mat4=(model.morder_pointwise if prm_pointwise else model.morder))
         #know
 
 

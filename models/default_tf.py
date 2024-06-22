@@ -41,6 +41,7 @@ class MyParticleNetwork(tf.keras.Model):
         self.adelta_energy=[]
         self.morder=[]
         self.morder_pointwise=[]
+        self.correctmodel_pointwise=None
         
 
         self.layer_channels = [32, 64, 64, 3]
@@ -213,7 +214,6 @@ class MyParticleNetwork(tf.keras.Model):
         # _vel=vel.numpy()
         _vel=vel    #is numpy
         energy=np.sum(_vel**2)
-        correctmodel_pointwise=np.zeros_like(pos)
         partnum=pos.shape[0]
         energy/=partnum
 
@@ -272,6 +272,8 @@ class MyParticleNetwork(tf.keras.Model):
             delta_energy_mat.append(np.sum((dv1**2)+2*_vel2*dv1,axis=1))
             delta_energy_mat.append(np.sum((dv2**2)+2*_vel2*dv2,axis=1))
             delta_energy_mat.append(np.sum((dv3**2)+2*_vel2*dv3,axis=1))#know 沿着某个维度求和
+
+            self.correctmodel_pointwise=np.zeros_like(delta_energy_mat[1])
             # print('[270]')
             # print(delta_energy_mat[1].shape)#partnum
             # exit(0)
@@ -298,8 +300,9 @@ class MyParticleNetwork(tf.keras.Model):
                     for modelidx in range(0,3):
                         if(abs(temp[x]-delta_energy_mat[modelidx][x])<1e-6):
                             bool_corrections[modelidx][x]=1
-                            correctmodel_pointwise[x]=modelidx
+                            self.correctmodel_pointwise[x]=modelidx
                             break
+            self.correctmodel_pointwise=self.correctmodel_pointwise.astype(np.int8)
             # print(bool_corrections[0].shape)
 
             for modelidx in range(0,3):
@@ -355,7 +358,7 @@ class MyParticleNetwork(tf.keras.Model):
                            bool_corrections[2-1]*pos_correction2+\
                            bool_corrections[3-1]*pos_correction3
 
-            self.morder_pointwise.append(correctmodel_pointwise)
+            self.morder_pointwise.append(self.correctmodel_pointwise)
 
             print('model 1 correct num'+str(np.sum(bool_corrections[1-1][:,0])))
             print('model 2 correct num'+str(np.sum(bool_corrections[2-1][:,0])))
