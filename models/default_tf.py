@@ -8,8 +8,15 @@ from train_network_tf import bvor,dt_frame
 # np.set_printoptions(precision=100)
 
 tempcnt=0
-prm_maxenergy=0
 
+from run_network import prm_maxenergy,prm_pointwise
+
+
+
+# print('\n\n\n[def]\n\n\n')
+# xx=tf.random.normal((1,1))
+# print(xx)
+# exit(0)
 
 class MyParticleNetwork(tf.keras.Model):
 
@@ -27,6 +34,14 @@ class MyParticleNetwork(tf.keras.Model):
                  gravity=(0, -9.81, 0)):
                  #prm
         super().__init__(name=type(self).__name__)
+        
+        #zxc add
+        self.mtimes=[0,0,0]
+        self.aenergy=[]
+        self.adelta_energy=[]
+        self.morder=[]
+        self.morder_pointwise=[]
+        
 
         self.layer_channels = [32, 64, 64, 3]
         self.kernel_size = kernel_size
@@ -34,7 +49,7 @@ class MyParticleNetwork(tf.keras.Model):
         self.coordinate_mapping = coordinate_mapping
         self.interpolation = interpolation
         self.use_window = use_window
-        
+
         
         self.particle_radius = particle_radius
         # if(bvor):
@@ -198,8 +213,13 @@ class MyParticleNetwork(tf.keras.Model):
         # _vel=vel.numpy()
         _vel=vel    #is numpy
         energy=np.sum(_vel**2)
+        correctmodel_pointwise=np.zeros_like(pos)
+        partnum=pos.shape[0]
+        energy/=partnum
+
         print('[energy]\t'+str(energy))
-    
+
+        
 
         #zxc 简单施加重力后的结果
         pos2, vel2 = self.integrate_pos_vel(pos, vel)
@@ -244,6 +264,59 @@ class MyParticleNetwork(tf.keras.Model):
         dv2=_pos_correction2/self.timestep
         dv3=_pos_correction3/self.timestep
 
+
+
+
+        if(prm_pointwise):
+            delta_energy_mat=[]
+            delta_energy_mat.append(np.sum((dv1**2)+2*_vel2*dv1,axis=1))
+            delta_energy_mat.append(np.sum((dv2**2)+2*_vel2*dv2,axis=1))
+            delta_energy_mat.append(np.sum((dv3**2)+2*_vel2*dv3,axis=1))#know 沿着某个维度求和
+            # print('[270]')
+            # print(delta_energy_mat[1].shape)#partnum
+            # exit(0)
+            bool_corrections=[]
+            bool_corrections.append(np.zeros_like(delta_energy_mat[1]))
+            bool_corrections.append(np.zeros_like(delta_energy_mat[1]))
+            bool_corrections.append(np.zeros_like(delta_energy_mat[1]))
+            # print('[277]')
+            # print(bool_corrections[0].shape)#partnum
+
+
+
+
+            #找出每个点修正的量来自于哪个模型
+            if(prm_maxenergy):
+                temp=np.maximum(delta_energy_mat[1-1],delta_energy_mat[2-1])
+                temp=np.maximum(temp,delta_energy_mat[3-1])
+            else:
+                temp=np.minimum(delta_energy_mat[1-1],delta_energy_mat[2-1])
+                temp=np.minimum(temp,delta_energy_mat[3-1])
+
+
+            for x in range(0,delta_energy_mat[1-1].shape[0]):
+                    for modelidx in range(0,3):
+                        if(abs(temp[x]-delta_energy_mat[modelidx][x])<1e-6):
+                            bool_corrections[modelidx][x]=1
+                            correctmodel_pointwise[x]=modelidx
+                            break
+            # print(bool_corrections[0].shape)
+
+            for modelidx in range(0,3):
+                bool_corrections[modelidx]=bool_corrections[modelidx].reshape(-1,1)#partnum 1 know
+                bool_corrections[modelidx]=np.tile(bool_corrections[modelidx], (1, 3)) #partnum 3 know
+
+            # print('[tile]')
+            # print(bool_corrections[0].shape)
+
+
+
+                
+
+        # print('[300]')
+        # print(((dv1**2)+2*_vel2*dv1).shape)#partnum 3
+
+
         delta_energy1=np.sum((dv1**2)+2*_vel2*dv1)
         delta_energy2=np.sum((dv2**2)+2*_vel2*dv2)
         delta_energy3=np.sum((dv3**2)+2*_vel2*dv3)
@@ -252,17 +325,42 @@ class MyParticleNetwork(tf.keras.Model):
         idxmin=np.argmin(delta_energys)
         idxmax=np.argmax(delta_energys)
         
-        
 
         # print('[delta E]\t'+str(delta_energy[1-1]))
 
         if(prm_maxenergy):
             pos_correction= pos_corrections[idxmax]   
             print('[choose]\t'+str(idxmax)) 
+            self.morder.append(idxmax)
+            self.mtimes[idxmax]+=1
+            self.adelta_energy.append(delta_energys[idxmax])
+
         else:
             pos_correction= pos_corrections[idxmin]
             print('[choose]\t'+str(idxmin)) 
+            self.morder.append(idxmin)
+            self.mtimes[idxmin]+=1
+            self.adelta_energy.append(delta_energys[idxmin])
+        
+        self.aenergy.append(energy)
 
+
+        if(prm_pointwise):
+            # print(bool_corrections[0].shape)#partnum 3
+            # print(type(bool_corrections[0]))#numpy
+            # print(pos_correction1.shape)#partnum 3
+            # print(type(pos_correction1))
+
+            pos_correction=bool_corrections[1-1]*pos_correction1+\
+                           bool_corrections[2-1]*pos_correction2+\
+                           bool_corrections[3-1]*pos_correction3
+
+            self.morder_pointwise.append(correctmodel_pointwise)
+
+            print('model 1 correct num'+str(np.sum(bool_corrections[1-1][:,0])))
+            print('model 2 correct num'+str(np.sum(bool_corrections[2-1][:,0])))
+            print('model 3 correct num'+str(np.sum(bool_corrections[3-1][:,0])))
+            # exit(0)
     
 
         # print('[vel mean]')

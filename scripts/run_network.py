@@ -10,6 +10,7 @@ import importlib
 import json
 import time
 import hashlib
+from tqdm import tqdm
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'datasets'))
 from physics_data_helper import numpy_from_bgeo, write_bgeo_from_numpy
 from create_physics_scenes import obj_surface_to_particles, obj_volume_to_particles
@@ -17,6 +18,9 @@ import open3d as o3d
 from write_ply import write_ply
 np.random.seed(1234)
 
+
+prm_maxenergy=1
+prm_pointwise=1
 
 eps=4
 prm_round=0
@@ -132,7 +136,7 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
     if(prm_round):
         points=    np.round(points,    eps)
         velocities=np.round(velocities,eps)
-    for step in range(num_steps):
+    for step in tqdm(range(num_steps)):
         # print('[num_steps]')
         # print(num_steps)
         # time.sleep(3000)
@@ -189,7 +193,8 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
                     # write_plyIdx(path=fluid_output_path,
                     # frame_num=step,
                     # num=pos.shape[0],
-                    # pos=pos)
+                    # pos=pos,
+                    # attr=model.correctmodel_pointwise)
 
                     write_particles(fluid_output_path, pos.numpy(), vel.numpy(),
                                     options)
@@ -235,13 +240,15 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
             #     vel = vel[mask]
 
     timeperframe=(time.time()-starttime)/num_steps
-    print('[choosetimes]\t'+str(model.choosetimes))
+    print('[mtimes]\t'+str(model.mtimes))
     print('[cost]\t'+str(timeperframe)+'sec per frame\t')
     np.savez(output_dir + '.npz',
         mat1=model.aenergy,\
         mat2=model.adelta_energy,\
-        mat3=model.choosetimes,
-        mat4=model.chooseorder)
+        mat3=model.mtimes,
+        mat4=(morder_pointwise if prm_pointwise else morder))
+        #know
+
 
 def run_sim_torch(trainscript_module, weights_path, scene, num_steps,
                   output_dir, options):
