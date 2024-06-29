@@ -36,12 +36,13 @@ class MyParticleNetwork(tf.keras.Model):
         super().__init__(name=type(self).__name__)
         
         #zxc add
-        self.mtimes=[0,0,0]
+        self.mtimes=[0,0,0,0]
         self.aenergy=[]
         self.adelta_energy=[]
         self.morder=[]
         self.morder_pointwise=[]
         self.correctmodel_pointwise=None
+        self.modelnum=4
         
 
         self.layer_channels = [32, 64, 64, 3]
@@ -232,7 +233,8 @@ class MyParticleNetwork(tf.keras.Model):
             pos2, vel2, feats, box, box_feats, fixed_radius_search_hash_table)
         pos_correction3=model3.compute_correction(
             pos2, vel2, feats, box, box_feats, fixed_radius_search_hash_table)
-
+        pos_correction4=model4.compute_correction(
+            pos2, vel2, feats, box, box_feats, fixed_radius_search_hash_table)
 
 
         alpha=0.5
@@ -250,7 +252,7 @@ class MyParticleNetwork(tf.keras.Model):
             # print(temp.shape)
         # pos_correction=(1-alpha)*(pos_correction1)+alpha*pos_correction2
 
-        pos_corrections=[pos_correction1,pos_correction2,pos_correction3]
+        pos_corrections=[pos_correction1,pos_correction2,pos_correction3,pos_correction4]
 
 
 
@@ -259,10 +261,14 @@ class MyParticleNetwork(tf.keras.Model):
         _pos_correction1=pos_corrections[1-1].cpu().numpy()
         _pos_correction2=pos_corrections[2-1].cpu().numpy()
         _pos_correction3=pos_corrections[3-1].cpu().numpy()
+        _pos_correction4=pos_corrections[4-1].cpu().numpy()
+
 
         dv1=_pos_correction1/self.timestep
         dv2=_pos_correction2/self.timestep
         dv3=_pos_correction3/self.timestep
+        dv4=_pos_correction4/self.timestep
+
 
 
 
@@ -272,6 +278,8 @@ class MyParticleNetwork(tf.keras.Model):
             delta_energy_mat.append(np.sum((dv1**2)+2*_vel2*dv1,axis=1))
             delta_energy_mat.append(np.sum((dv2**2)+2*_vel2*dv2,axis=1))
             delta_energy_mat.append(np.sum((dv3**2)+2*_vel2*dv3,axis=1))#know 沿着某个维度求和
+            delta_energy_mat.append(np.sum((dv4**2)+2*_vel2*dv4,axis=1))
+
 
             self.correctmodel_pointwise=np.zeros_like(delta_energy_mat[1])
             # print('[270]')
@@ -281,6 +289,8 @@ class MyParticleNetwork(tf.keras.Model):
             bool_corrections.append(np.zeros_like(delta_energy_mat[1]))
             bool_corrections.append(np.zeros_like(delta_energy_mat[1]))
             bool_corrections.append(np.zeros_like(delta_energy_mat[1]))
+            bool_corrections.append(np.zeros_like(delta_energy_mat[1]))
+
             # print('[277]')
             # print(bool_corrections[0].shape)#partnum
 
@@ -291,13 +301,17 @@ class MyParticleNetwork(tf.keras.Model):
             if(prm_maxenergy):
                 temp=np.maximum(delta_energy_mat[1-1],delta_energy_mat[2-1])
                 temp=np.maximum(temp,delta_energy_mat[3-1])
+                temp=np.maximum(temp,delta_energy_mat[4-1])
+
             else:
                 temp=np.minimum(delta_energy_mat[1-1],delta_energy_mat[2-1])
                 temp=np.minimum(temp,delta_energy_mat[3-1])
+                temp=np.minimum(temp,delta_energy_mat[4-1])
+
 
 
             for x in range(0,delta_energy_mat[1-1].shape[0]):
-                    for modelidx in range(0,3):
+                    for modelidx in range(0,self.modelnum):
                         if(abs(temp[x]-delta_energy_mat[modelidx][x])<1e-6):
                             bool_corrections[modelidx][x]=1
                             self.correctmodel_pointwise[x]=modelidx
@@ -305,7 +319,7 @@ class MyParticleNetwork(tf.keras.Model):
             self.correctmodel_pointwise=self.correctmodel_pointwise.astype(np.int8)
             # print(bool_corrections[0].shape)
 
-            for modelidx in range(0,3):
+            for modelidx in range(0,self.modelnum):
                 bool_corrections[modelidx]=bool_corrections[modelidx].reshape(-1,1)#partnum 1 know
                 bool_corrections[modelidx]=np.tile(bool_corrections[modelidx], (1, 3)) #partnum 3 know
 
@@ -323,8 +337,14 @@ class MyParticleNetwork(tf.keras.Model):
         delta_energy1=np.sum((dv1**2)+2*_vel2*dv1)
         delta_energy2=np.sum((dv2**2)+2*_vel2*dv2)
         delta_energy3=np.sum((dv3**2)+2*_vel2*dv3)
+        delta_energy4=np.sum((dv4**2)+2*_vel2*dv4)
 
-        delta_energys=np.array([delta_energy1,delta_energy2,delta_energy3])
+        #prm_
+        delta_energys=np.array([delta_energy1,delta_energy2,delta_energy3,delta_energy4])
+
+        #case-B
+        # delta_energys=np.array([delta_energy1,delta_energy2,             ,delta_energy4])
+
         idxmin=np.argmin(delta_energys)
         idxmax=np.argmax(delta_energys)
         
@@ -356,13 +376,17 @@ class MyParticleNetwork(tf.keras.Model):
 
             pos_correction=bool_corrections[1-1]*pos_correction1+\
                            bool_corrections[2-1]*pos_correction2+\
-                           bool_corrections[3-1]*pos_correction3
+                           bool_corrections[3-1]*pos_correction3+\
+                           bool_corrections[4-1]*pos_correction4
+
 
             self.morder_pointwise.append(self.correctmodel_pointwise)
 
             print('model 1 correct num'+str(np.sum(bool_corrections[1-1][:,0])))
             print('model 2 correct num'+str(np.sum(bool_corrections[2-1][:,0])))
             print('model 3 correct num'+str(np.sum(bool_corrections[3-1][:,0])))
+            print('model 4 correct num'+str(np.sum(bool_corrections[4-1][:,0])))
+
             # exit(0)
     
 
@@ -397,6 +421,13 @@ class MyParticleNetwork(tf.keras.Model):
           normals of the static particles.
         """
         pos, vel, feats, box, box_feats = inputs
+
+        _vel=vel    #is numpy
+        energy=np.sum(_vel**2)
+        partnum=pos.shape[0]
+        energy/=partnum
+        self.aenergy.append(energy)
+        print('[energy]\t'+str(energy))
 
         #zxc 简单施加重力后的结果
         pos2, vel2 = self.integrate_pos_vel(pos, vel)

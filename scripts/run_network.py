@@ -19,8 +19,8 @@ from write_ply import write_ply
 np.random.seed(1234)
 
 
-prm_maxenergy=0
-prm_pointwise=1
+prm_maxenergy=1
+prm_pointwise=0
 
 eps=4
 prm_round=0
@@ -92,7 +92,7 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
 
         model4 = trainscript_module.create_model()
         model4.init()
-        model4.load_weights(prm_mixmodel, by_name=True)
+        model4.load_weights("csm300_1111.h5", by_name=True)
     else:
         print('[single]')
     #COPY
@@ -151,7 +151,7 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
                                              'fluid_{0:04d}'.format(step))
             if(prm_outputInitScene):
                 if(step!=0):
-                    break
+                    exit(0)
                 print('[outputInitScne]')
                 print(box.shape)
                 print(pos.shape)
@@ -182,6 +182,10 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
                     dim=3,
                     num=vel.shape[0],
                     pos=vel)
+
+                np.save("./sp/Box",box)
+                np.save("./sp/POS",pos)
+                np.save("./sp/VEL",vel)
 
 
             if(prm_only_test_vel==0):
