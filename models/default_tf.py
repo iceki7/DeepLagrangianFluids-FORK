@@ -8,7 +8,7 @@ from train_network_tf import bvor,dt_frame
 # np.set_printoptions(precision=100)
 
 tempcnt=0
-
+from energy import getEnergy
 from run_network import prm_maxenergy,prm_pointwise
 
 
@@ -214,10 +214,8 @@ class MyParticleNetwork(tf.keras.Model):
 
         # _vel=vel.numpy()
         _vel=vel    #is numpy
-        energy=np.sum(_vel**2)
         partnum=pos.shape[0]
-        energy/=partnum
-
+        energy=getEnergy(vel=_vel,partnum=partnum)
         print('[energy]\t'+str(energy))
 
         
@@ -244,6 +242,12 @@ class MyParticleNetwork(tf.keras.Model):
         
         alpha=float(ratio)
         alpha=float(ratio)**3
+        
+        #prm_
+        global prm_maxenergy
+        if(ratio<=0.3 or ratio>=0.7):
+            prm_maxenergy=0
+        
         if(step%50==0):
             print('[alpha]\t'+str(alpha))
 
@@ -423,9 +427,8 @@ class MyParticleNetwork(tf.keras.Model):
         pos, vel, feats, box, box_feats = inputs
 
         _vel=vel    #is numpy
-        energy=np.sum(_vel**2)
         partnum=pos.shape[0]
-        energy/=partnum
+        energy=getEnergy(vel=_vel,partnum=partnum)
         self.aenergy.append(energy)
         print('[energy]\t'+str(energy))
 
