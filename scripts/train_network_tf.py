@@ -77,6 +77,7 @@ jsoname="temp.json"
 prm_cconvSceneConfig=1
 # jsoname="lowfluid2cut.json"
 dt_frame=0.016
+# dt_frame=0.004
 
 
 

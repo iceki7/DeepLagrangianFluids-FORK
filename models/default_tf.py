@@ -217,6 +217,9 @@ class MyParticleNetwork(tf.keras.Model):
         partnum=pos.shape[0]
         energy=getEnergy(vel=_vel,partnum=partnum)
         print('[energy]\t'+str(energy))
+        if(energy>15):
+            print('too much energy')
+            exit(0)
 
         
 
@@ -243,10 +246,12 @@ class MyParticleNetwork(tf.keras.Model):
         alpha=float(ratio)
         alpha=float(ratio)**3
         
-        #prm_
+        #prm_   minmaxmin
         global prm_maxenergy
         if(ratio<=0.3 or ratio>=0.7):
             prm_maxenergy=0
+        else:
+            prm_maxenergy=1
         
         if(step%50==0):
             print('[alpha]\t'+str(alpha))
@@ -351,6 +356,10 @@ class MyParticleNetwork(tf.keras.Model):
 
         idxmin=np.argmin(delta_energys)
         idxmax=np.argmax(delta_energys)
+
+        # #debug，只使用一个模型，看它产生的曲线是否就是call()的曲线，来证明代码没问题
+        # idxmax=0
+        # idxmin=0
         
 
         # print('[delta E]\t'+str(delta_energy[1-1]))
@@ -431,6 +440,9 @@ class MyParticleNetwork(tf.keras.Model):
         energy=getEnergy(vel=_vel,partnum=partnum)
         self.aenergy.append(energy)
         print('[energy]\t'+str(energy))
+        if(energy>15):
+            print('too much energy')
+            exit(0)
 
         #zxc 简单施加重力后的结果
         pos2, vel2 = self.integrate_pos_vel(pos, vel)

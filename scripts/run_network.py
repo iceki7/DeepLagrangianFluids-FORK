@@ -22,6 +22,8 @@ np.random.seed(1234)
 prm_maxenergy=1
 prm_pointwise=0
 
+prm_mask=0
+
 eps=4
 prm_round=0
 
@@ -31,6 +33,10 @@ prm_round=0
 
 
 prm_only_test_vel=0
+prm_exportgap=1
+
+export_num=0
+scenejsonname="error"
 
 #仅输出初始场景的信息，通过generalish.sh使用
 prm_outputInitScene=0
@@ -72,6 +78,8 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
                options):
 
     # init the network
+    global export_num
+
 
     stm=time.time()
     model = trainscript_module.create_model()
@@ -100,35 +108,49 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
     print('[models loading time](s)\t'+str(etm-stm))
 
 
-    # prepare static particles
-    walls = []
-    for x in scene['walls']:
-        points, normals = obj_surface_to_particles(x['path'])
-        if 'invert_normals' in x and x['invert_normals']:
-            normals = -normals
-            print('[invert normal]')
-        points += np.asarray([x['translation']], dtype=np.float32)
-        walls.append((points, normals))
-    box = np.concatenate([x[0] for x in walls], axis=0)
-    box_normals = np.concatenate([x[1] for x in walls], axis=0)
+    print('./cache/'+scenejsonname+'-f.npy')
+    if not os.path.exists('./cache/'+scenejsonname+'-f.npy'):#know
+        print('[no scene ply cache]') 
 
-    # export static particles
-    write_particles(os.path.join(output_dir, 'box'), box, box_normals, options)
+        # prepare static particles
+        walls = []
+        for x in scene['walls']:
+            points, normals = obj_surface_to_particles(x['path'])
+            if 'invert_normals' in x and x['invert_normals']:
+                normals = -normals
+                print('[invert normal]')
+            points += np.asarray([x['translation']], dtype=np.float32)
+            walls.append((points, normals))
+        box = np.concatenate([x[0] for x in walls], axis=0)
+        box_normals = np.concatenate([x[1] for x in walls], axis=0)
 
-    # compute lowest point for removing out of bounds particles
-    min_y = np.min(box[:, 1]) - 0.05 * (np.max(box[:, 1]) - np.min(box[:, 1]))
+        # export static particles
+        write_particles(os.path.join(output_dir, 'box'), box, box_normals, options)
 
-    # prepare fluids
-    fluids = []
-    for x in scene['fluids']:
-        points = obj_volume_to_particles(x['path'])[0]
-        points += np.asarray([x['translation']], dtype=np.float32)
-        velocities = np.empty_like(points)
-        velocities[:, 0] = x['velocity'][0]
-        velocities[:, 1] = x['velocity'][1]
-        velocities[:, 2] = x['velocity'][2]
-        range_ = range(x['start'], x['stop'], x['step'])
-        fluids.append((points, velocities, range_))
+        # compute lowest point for removing out of bounds particles
+        min_y = np.min(box[:, 1]) - 0.05 * (np.max(box[:, 1]) - np.min(box[:, 1]))
+
+        # prepare fluids
+        fluids = []
+        for x in scene['fluids']:
+            points = obj_volume_to_particles(x['path'])[0]
+            points += np.asarray([x['translation']], dtype=np.float32)
+            velocities = np.empty_like(points)
+            velocities[:, 0] = x['velocity'][0]
+            velocities[:, 1] = x['velocity'][1]
+            velocities[:, 2] = x['velocity'][2]
+            range_ = range(x['start'], x['stop'], x['step'])
+            fluids.append((points, velocities, range_))
+            #zxc
+        np.save('./cache/'+scenejsonname+"-f",fluids)
+        np.save('./cache/'+scenejsonname+"-box",box)
+        np.save('./cache/'+scenejsonname+"-boxn",box_normals)
+    else:
+        print('[use cache]')
+        fluids=     np.load('./cache/'+scenejsonname+"-f.npy",allow_pickle=True)
+        box=        np.load('./cache/'+scenejsonname+"-box.npy",allow_pickle=True)
+        box_normals=np.load('./cache/'+scenejsonname+"-boxn.npy",allow_pickle=True)
+
 
     pos = np.empty(shape=(0, 3), dtype=np.float32)
     vel = np.empty_like(pos)
@@ -145,10 +167,22 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
             if step in range_:  # check if we have to add the fluid at this point in time
                 pos = np.concatenate([pos, points], axis=0)
                 vel = np.concatenate([vel, velocities], axis=0)
+        
+        #y0
+        if(step<=30 and step>=1):
+            vel=vel.numpy()
+            vel[:,1]=0
+            import tensorflow as tf
+            vel=tf.convert_to_tensor(vel)
 
         if pos.shape[0]:
             fluid_output_path = os.path.join(output_dir,
                                              'fluid_{0:04d}'.format(step))
+            if(prm_exportgap!=1):
+                fluid_output_path = os.path.join(output_dir,
+                                    'fluid_{0:04d}'.format(export_num))
+                
+            
             if(prm_outputInitScene):
                 if(step!=0):
                     exit(0)
@@ -188,9 +222,10 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
                 np.save("./sp/VEL",vel)
 
 
-            if(prm_only_test_vel==0):
+            if(prm_only_test_vel==0 and step%prm_exportgap==0):
                 if isinstance(pos, np.ndarray):
                     write_particles(fluid_output_path, pos, vel, options)
+                    export_num+=1
                 else:
                     # prm_
                     # from write_ply import write_plyIdx
@@ -202,6 +237,8 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
 
                     write_particles(fluid_output_path, pos.numpy(), vel.numpy(),
                                     options)
+                    export_num+=1
+                    
 
             #检查网络随机性
             # pos=np.random.rand(*pos.shape)
@@ -238,10 +275,14 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
         if step % 10 == 0:
             #prm_
             print(step, 'num particles', pos.shape[0])
-            # mask = pos[:, 1] > min_y
-            # if np.count_nonzero(mask) < pos.shape[0]:
-            #     pos = pos[mask]
-            #     vel = vel[mask]
+            if(prm_mask):
+                # mask = pos[:, 1] > min_y
+                print('[MASK]')
+                mask = pos[:, 0]  < 8 #需要保留的粒子
+                if np.count_nonzero(mask) < pos.shape[0]:
+                    pos = pos[mask]
+                    vel = vel[mask]
+
 
     timeperframe=(time.time()-starttime)/num_steps
     print('[mtimes]\t'+str(model.mtimes))
@@ -392,7 +433,8 @@ def main():
     module_name = os.path.splitext(os.path.basename(args.trainscript))[0]
     sys.path.append('.')
     trainscript_module = importlib.import_module(module_name)
-
+    global scenejsonname
+    scenejsonname=args.scene
     with open(args.scene, 'r') as f:
         scene = json.load(f)
 
