@@ -22,6 +22,7 @@ np.random.seed(1234)
 prm_maxenergy=1
 prm_pointwise=0
 
+
 prm_mask=0
 
 eps=4
@@ -88,9 +89,12 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
     #know
     if(prm_mix):
         print('[mix]')
+
+
+
         model2 = trainscript_module.create_model()
         model2.init()
-        model2.load_weights(prm_mixmodel, by_name=True)
+        model2.load_weights("csm_mp300.h5", by_name=True)
         #注意加载参数，却不会加载dt和gravity。它是在create_model时确定的
 
         model3 = trainscript_module.create_model()
@@ -101,6 +105,9 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
         model4 = trainscript_module.create_model()
         model4.init()
         model4.load_weights("csm300_1111.h5", by_name=True)
+
+
+    
     else:
         print('[single]')
     #COPY
@@ -167,13 +174,15 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
             if step in range_:  # check if we have to add the fluid at this point in time
                 pos = np.concatenate([pos, points], axis=0)
                 vel = np.concatenate([vel, velocities], axis=0)
-        
-        #y0
-        if(step<=30 and step>=1):
-            vel=vel.numpy()
-            vel[:,1]=0
-            import tensorflow as tf
-            vel=tf.convert_to_tensor(vel)
+
+
+        #testterm y0
+        # if(step<=30 and step>=1):
+        #     vel=vel.numpy()
+        #     vel[:,1]=0
+        #     import tensorflow as tf
+        #     vel=tf.convert_to_tensor(vel)
+
 
         if pos.shape[0]:
             fluid_output_path = os.path.join(output_dir,

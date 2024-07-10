@@ -246,12 +246,18 @@ class MyParticleNetwork(tf.keras.Model):
         alpha=float(ratio)
         alpha=float(ratio)**3
         
-        #prm_   minmaxmin
+
         global prm_maxenergy
-        if(ratio<=0.3 or ratio>=0.7):
-            prm_maxenergy=0
-        else:
-            prm_maxenergy=1
+
+
+
+        #testterm sus
+        # if(ratio<=0.3 or ratio>=0.7):
+        #     prm_maxenergy=0
+        # else:
+        #     prm_maxenergy=1
+
+
         
         if(step%50==0):
             print('[alpha]\t'+str(alpha))
@@ -357,7 +363,8 @@ class MyParticleNetwork(tf.keras.Model):
         idxmin=np.argmin(delta_energys)
         idxmax=np.argmax(delta_energys)
 
-        # #debug，只使用一个模型，看它产生的曲线是否就是call()的曲线，来证明代码没问题
+
+        #testterm 1m
         # idxmax=0
         # idxmin=0
         

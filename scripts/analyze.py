@@ -28,12 +28,12 @@ def getnpz(filename):
 
 
 
-
+#prm_
 framenum=999
 
 
 #COPY
-from matplotlib.pyplot import plot,xlabel,ylabel,title,legend,savefig,grid,scatter,ylim,xlim
+from matplotlib.pyplot import plot,xlabel,ylabel,title,legend,savefig,grid,scatter,ylim,xlim,clf
 def pltCopy():#验证同一个模型模拟多次所得到的能量曲线
     x=np.arange(0,framenum)
   
@@ -67,13 +67,12 @@ def pltCopy():#验证同一个模型模拟多次所得到的能量曲线
 
 def pltChoose():
     x=np.arange(0,framenum)
-    plot(x, getnpz('emin4_csm_df300csm_mp300_50kmc_ball_2velx_0602')[0][:framenum], label='max')
-    # plot(x, getnpz('emin4_csm_df300csm_mp300_50kmc_ball_2velx_0602')[0][:framenum], label='min')
-    scatter(x, getnpz('emin4_csm_df300csm_mp300_50kmc_ball_2velx_0602')[3][:framenum],marker="x",s=2,color="orange",label="emax4")
-    # scatter(x, getnpz('emin4_csm_df300csm_mp300_50kmc_ball_2velx_0602')[3][:framenum],marker="x",s=2,color="green",label="emin4")
+    plot(x, getnpz('emax_b_mc_ball_2velx_0602')[0][:framenum], label='emaxb')
+    scatter(x, getnpz('emax_b_mc_ball_2velx_0602')[3][:framenum],marker="x",s=2,color="orange",label="emaxb")
+   
 
     
-    xlabel('Epoches')
+    xlabel('Steps')
     ylabel('Value')
     #axes(yscale="log")
 
@@ -87,8 +86,42 @@ def pltChoose():
 
 
 
-    savefig('[choose emin4].png', dpi=300)
 
+    savefig('[choose emaxb].png', dpi=300)
+    clf()
+
+
+
+
+
+
+
+
+
+
+    x=np.arange(0,framenum)
+    plot(x, getnpz('emin_b_mc_ball_2velx_0602')[0][:framenum], label='eminb')
+    scatter(x, getnpz('emin_b_mc_ball_2velx_0602')[3][:framenum],marker="x",s=2,color="orange",label="eminb")
+   
+
+    
+    xlabel('Steps')
+    ylabel('Value')
+    #axes(yscale="log")
+
+    # ylim(bottom=0, top=0.0002)
+        #axes(yscale="logit")
+    grid(True, linestyle="--", alpha=0.5)
+    title('Energy')
+    legend()
+
+
+
+
+
+
+    savefig('[choose eminb].png', dpi=300)
+    clf()
     # show()
     print('[ploted]')
 
@@ -98,11 +131,14 @@ def pltCurl():
     plot(x, np.load('./av_curl_df'+ '.npy')[:framenum],label='df')
     plot(x, np.load('./av_curl_mt'+ '.npy')[:framenum],label='mt')
     plot(x, np.load('./av_curl_mp'+ '.npy')[:framenum],label='mp')
-    plot(x, np.load('./av_curl_emax4'+ '.npy')[:framenum],label='emax4')
-    plot(x, np.load('./av_curl_emin4'+ '.npy')[:framenum],label='emin4')
+    plot(x, np.load('./av_curl_emaxb'+ '.npy')[:framenum],label='emaxb')
+    plot(x, np.load('./av_curl_eminb'+ '.npy')[:framenum],label='eminb')
+    # plot(x, np.load('./av_curl_mmm'+ '.npy')[:framenum],label='minmaxmin')
+
 
     title('Average Curl')
     legend()
+    clf()
 
 
 
@@ -110,22 +146,71 @@ def pltCurl():
 
     savefig('[curl].png', dpi=300)
 
-#COPY
-def pltCurve():
+def pltSimilar():
     x=np.arange(0,framenum)
-    plot(x, getnpz('emax4_copy6_csm_df300csm_mp300_50kmc_ball_2velx_0602')[0][:framenum], label='max')
-    # plot(x, getnpz('emax4_bd_csm_df300csm_mp300_50kmc_ball_2velx_0602')[0][:framenum], label='max_bd')
 
-    plot(x, getnpz('emin4_csm_df300csm_mp300_50kmc_ball_2velx_0602')[0][:framenum], label='min')
-    plot(x, getnpz('emaxmin_d7_csm_df300csm_mp300_50kmc_ball_2velx_0602')[0][:framenum], label='max_min')
     
-    # plot(x, getnpz('_copy_csm_mp300_50kmc_ball_2velx_0602')[0][:framenum], label='mp_model')
-    # plot(x,getnpz('_csm300_1111_50kmc_ball_2velx_0602')[0][:framenum], label='mt_model')
-    # plot(x, getnpz('_csm_df300_50kmc_ball_2velx_0602')[0][:framenum], label='df_model')
-    # plot(x, getnpz('_bd_csm_df300_50kmc_ball_2velx_0602')[0][:framenum], label='df_model_bd')
 
 
-    # scatter(x, getnpz('emax4_csm_df300csm_mp300_50kmc_ball_2velx_0602')[3][:framenum],marker="x",s=2,color="orange",label="emax4")
+    plot(x, getnpz('_csm_df300_1111_50kmc_ball_2velx_0602')[0][:framenum], label='df_model')
+    plot(x, getnpz('_copy_csm_mp300_50kmc_ball_2velx_0602')[0][:framenum], label='mp_model')
+    plot(x, getnpz('_csm300_1111_50kmc_ball_2velx_0602')[0][:framenum], label='mt_model')
+    # plot(x, getnpz('_pretrained_model_weights_50kmc_ball_2velx_0602')[0][:framenum], label='pre_model')
+
+
+
+
+
+    plot(x, np.load('./av_energy_mp'+ '.npy')[:framenum],label='mp')
+    plot(x, np.load('./av_energy_df'+ '.npy')[:framenum],label='df')
+    plot(x, np.load('./av_energy_mt'+ '.npy')[:framenum],label='mt')
+
+
+
+
+ 
+ 
+    xlabel('Steps')
+    ylabel('Value')
+    #axes(yscale="log")
+
+    # ylim(bottom=0, top=3)
+    # xlim(left=0,right=framenum)
+        #axes(yscale="logit")
+    grid(True, linestyle="--", alpha=0.5)
+    title('Energy')
+    legend()
+
+
+
+
+
+    # savefig('[temp].png', dpi=300)
+    savefig('[silimar].png', dpi=300)
+    clf()
+
+    # show()
+    print('[ploted]')
+#COPY
+def pltEmax():
+    x=np.arange(0,framenum)
+    plot(x, getnpz('emax_b_mc_ball_2velx_0602')[0][:framenum], label='emaxB')
+    plot(x, getnpz('emin_b_mc_ball_2velx_0602')[0][:framenum], label='eminB')
+    
+
+
+    plot(x, getnpz('_csm_df300_1111_50kmc_ball_2velx_0602')[0][:framenum], label='df_model')
+    plot(x, getnpz('_copy_csm_mp300_50kmc_ball_2velx_0602')[0][:framenum], label='mp_model')
+    plot(x, getnpz('_csm300_1111_50kmc_ball_2velx_0602')[0][:framenum], label='mt_model')
+    # plot(x, getnpz('_pretrained_model_weights_50kmc_ball_2velx_0602')[0][:framenum], label='pre_model')
+
+
+    # plot(x, getnpz('emin4_csm_df300csm_mp300_50kmc_ball_2velx_0602')[0][:framenum], label='min')
+    # plot(x, getnpz('emaxmin_d7_csm_df300csm_mp300_50kmc_ball_2velx_0602')[0][:framenum], label='max_min')
+    # plot(x, getnpz('eminmaxmin_d7_csm_df300csm_mp300_50kmc_ball_2velx_0602')[0][:framenum], label='mmm')
+    # plot(x, getnpz('minmaxmin_b_mc_ball_2velx_0602')[0][:framenum], label='mmm_b')
+
+    
 
 
 
@@ -139,12 +224,12 @@ def pltCurve():
 
  
  
-    xlabel('Epoches')
+    xlabel('Steps')
     ylabel('Value')
     #axes(yscale="log")
 
-    # ylim(bottom=0, top=0.0002)
-    xlim(left=0,right=1000)
+    # ylim(bottom=0, top=3)
+    # xlim(left=0,right=framenum)
         #axes(yscale="logit")
     grid(True, linestyle="--", alpha=0.5)
     title('Energy')
@@ -154,14 +239,18 @@ def pltCurve():
 
 
 
+    # savefig('[temp].png', dpi=300)
     savefig('[energy].png', dpi=300)
+    clf()
+
 
     # show()
     print('[ploted]')
 
 
-pltCurve()
-# pltChoose()
+pltEmax()
+pltSimilar()
+pltChoose()
 # pltCopy()
 # pltCurl()
 
