@@ -8,8 +8,8 @@ from train_network_tf import bvor,dt_frame
 # np.set_printoptions(precision=100)
 
 tempcnt=0
-from energy import getEnergy
-from run_network import prm_maxenergy,prm_pointwise
+from energy import getEnergy,getDeltaEnergy
+from run_network import prm_maxenergy,prm_pointwise,prm_area
 
 
 
@@ -215,7 +215,8 @@ class MyParticleNetwork(tf.keras.Model):
         # _vel=vel.numpy()
         _vel=vel    #is numpy
         partnum=pos.shape[0]
-        energy=getEnergy(vel=_vel,partnum=partnum)
+        energy=np.sum(getEnergy(vel=_vel))/partnum
+        self.aenergy.append(energy)    
         print('[energy]\t'+str(energy))
         if(energy>15):
             print('too much energy')
@@ -286,14 +287,20 @@ class MyParticleNetwork(tf.keras.Model):
 
 
 
+        delta_energy_mat1=np.sum(getDeltaEnergy(v=_vel2,dv=dv1),axis=1)#know 沿着某个维度求和
+        delta_energy_mat2=np.sum(getDeltaEnergy(v=_vel2,dv=dv2),axis=1)
+        delta_energy_mat3=np.sum(getDeltaEnergy(v=_vel2,dv=dv3),axis=1)
+        delta_energy_mat4=np.sum(getDeltaEnergy(v=_vel2,dv=dv4),axis=1)
+        delta_energy_mat=[]
+        delta_energy_mat.append(delta_energy_mat1)
+        delta_energy_mat.append(delta_energy_mat2)
+        delta_energy_mat.append(delta_energy_mat3)
+        delta_energy_mat.append(delta_energy_mat4)
 
-
+      
+        
         if(prm_pointwise):
-            delta_energy_mat=[]
-            delta_energy_mat.append(np.sum((dv1**2)+2*_vel2*dv1,axis=1))
-            delta_energy_mat.append(np.sum((dv2**2)+2*_vel2*dv2,axis=1))
-            delta_energy_mat.append(np.sum((dv3**2)+2*_vel2*dv3,axis=1))#know 沿着某个维度求和
-            delta_energy_mat.append(np.sum((dv4**2)+2*_vel2*dv4,axis=1))
+
 
 
             self.correctmodel_pointwise=np.zeros_like(delta_energy_mat[1])
@@ -349,10 +356,11 @@ class MyParticleNetwork(tf.keras.Model):
         # print(((dv1**2)+2*_vel2*dv1).shape)#partnum 3
 
 
-        delta_energy1=np.sum((dv1**2)+2*_vel2*dv1)
-        delta_energy2=np.sum((dv2**2)+2*_vel2*dv2)
-        delta_energy3=np.sum((dv3**2)+2*_vel2*dv3)
-        delta_energy4=np.sum((dv4**2)+2*_vel2*dv4)
+        delta_energy1=np.sum(delta_energy_mat1)
+        delta_energy2=np.sum(delta_energy_mat2)
+        delta_energy3=np.sum(delta_energy_mat3)
+        delta_energy4=np.sum(delta_energy_mat4)
+
 
         #prm_
         delta_energys=np.array([delta_energy1,delta_energy2,delta_energy3,delta_energy4])
@@ -376,17 +384,132 @@ class MyParticleNetwork(tf.keras.Model):
             print('[choose]\t'+str(idxmax)) 
             self.morder.append(idxmax)
             self.mtimes[idxmax]+=1
-            self.adelta_energy.append(delta_energys[idxmax])
+
 
         else:
             pos_correction= pos_corrections[idxmin]
             print('[choose]\t'+str(idxmin)) 
             self.morder.append(idxmin)
             self.mtimes[idxmin]+=1
-            self.adelta_energy.append(delta_energys[idxmin])
         
-        self.aenergy.append(energy)
 
+
+        if(prm_area):
+
+
+            print('----------step\t'+str(step))
+            
+            # print(pos.shape)#partnum 3
+            # print(area_mask.shape)#partnum
+            # exit(0)
+            # 遍历每个点，检查其x坐标是否小于0.5  
+
+
+            #prm_
+            print('filtering...')
+            area_mask = pos[:, 0] > -10 #需要保留的粒子
+            if not isinstance(area_mask,np.ndarray):
+                area_mask=area_mask.cpu().numpy() 
+
+            temp= pos[:, 0] < -2
+            if not isinstance(temp,     np.ndarray):
+                temp=temp.cpu().numpy() 
+
+            area_mask *= temp
+            print(area_mask.shape)
+            
+
+            
+                # one=tf.ones_like(area_mask)
+            area_mask=area_mask.astype(np.float32)
+            one=np.ones_like(area_mask)
+            print(area_mask)
+            
+            print('[done filter]')
+            # print(temp)#partnum
+            # print(area_mask.shape)#partnum 1
+            print(type(area_mask))#ndarray
+            print(area_mask.dtype)#bool
+            print(type(delta_energy_mat1))#ndarray
+
+      
+                
+            area_mask=np.array([area_mask]).T
+            one=np.array([one]).T
+            delta_energy_mat1=np.array([delta_energy_mat1]).T
+            delta_energy_mat2=np.array([delta_energy_mat2]).T
+            delta_energy_mat3=np.array([delta_energy_mat3]).T
+            delta_energy_mat4=np.array([delta_energy_mat4]).T
+
+
+
+            
+
+
+            print(delta_energy_mat1.shape)#partnum,1
+
+        
+
+
+            print(area_mask.dtype)#bool
+
+
+
+            print('[z0]')
+            # area_mask=tf.convert_to_tensor(area_mask)
+            # delta_energy_mat1=tf.convert_to_tensor(delta_energy_mat1)
+            
+  
+            delta_energy1_area=np.sum(tf.math.multiply(area_mask,delta_energy_mat1).cpu().numpy())
+            delta_energy2_area=np.sum(tf.math.multiply(area_mask,delta_energy_mat2).cpu().numpy())
+            delta_energy3_area=np.sum(tf.math.multiply(area_mask,delta_energy_mat3).cpu().numpy())
+            delta_energy4_area=np.sum(tf.math.multiply(area_mask,delta_energy_mat4).cpu().numpy())
+        
+
+            # if(step>0):#否则本来就是numpy
+            #     if(isinstance(area_mask, np.ndarray)):
+            #         pass
+            #     else:
+
+            #         area_mask=area_mask.cpu().numpy()
+
+            # delta_energy_mat1=delta_energy_mat1.cpu().numpy()
+            print('[z1]')
+
+
+            idx_area=np.argmax([delta_energy1_area,\
+                                delta_energy2_area,\
+                                delta_energy3_area,\
+                                delta_energy4_area])
+            
+
+            if(idx_area==1-1):
+                pos_correction_area=pos_correction1
+            elif(idx_area==2-1):
+                pos_correction_area=pos_correction2
+            elif(idx_area==3-1):
+                pos_correction_area=pos_correction3
+            elif(idx_area==4-1):
+                pos_correction_area=pos_correction4
+            print('[area model]\t'+str(idx_area))
+            print('[total model]\t'+str(idxmin))
+            # print('[z2]')
+            # print(area_mask.shape)
+            area_mask_tile=np.tile(area_mask,[1,3])
+            one_tile=np.tile(one,[1,3])
+            # print(area_mask.shape)
+            # print(pos_correction.shape)s
+            print(type(pos_correction))
+
+            if(not isinstance(pos_correction,np.ndarray)):
+                area_mask_tile=tf.convert_to_tensor(area_mask_tile)
+                one_tile=tf.convert_to_tensor(one_tile)
+
+            pos_correction=\
+            (one_tile-area_mask_tile)*(
+                pos_correction
+            )+\
+            area_mask_tile* pos_correction_area
 
         if(prm_pointwise):
             # print(bool_corrections[0].shape)#partnum 3
@@ -407,8 +530,27 @@ class MyParticleNetwork(tf.keras.Model):
             print('model 3 correct num'+str(np.sum(bool_corrections[3-1][:,0])))
             print('model 4 correct num'+str(np.sum(bool_corrections[4-1][:,0])))
 
+
+        #record
+        print('[record]')
+        if(prm_pointwise):
+            pass
+        elif(prm_area):
+            
             # exit(0)
-    
+            temp=\
+            (one-area_mask)*(
+                np.array([delta_energy_mat[idxmin]]).T
+            )+\
+            area_mask* np.array([delta_energy_mat[idx_area]]).T
+            temp=np.sum(temp)/partnum
+            self.adelta_energy.append(temp)
+            print('[rec2]')
+        elif(prm_maxenergy):
+            self.adelta_energy.append(delta_energys[idxmax]/partnum)
+        else:
+            self.adelta_energy.append(delta_energys[idxmin]/partnum)
+            
 
         # print('[vel mean]')
         # print(np.mean(_pos_correction1))
@@ -444,7 +586,7 @@ class MyParticleNetwork(tf.keras.Model):
 
         _vel=vel    #is numpy
         partnum=pos.shape[0]
-        energy=getEnergy(vel=_vel,partnum=partnum)
+        energy=np.sum(getEnergy(vel=_vel))/partnum
         self.aenergy.append(energy)
         print('[energy]\t'+str(energy))
         if(energy>15):
@@ -457,6 +599,8 @@ class MyParticleNetwork(tf.keras.Model):
         #zxc 仅这一步用nn
         pos_correction = self.compute_correction(
             pos2, vel2, feats, box, box_feats, fixed_radius_search_hash_table)
+        
+        self.adelta_energy.append(np.sum(getDeltaEnergy(v=vel2,dv=pos_correction/self.timestep))/partnum)
 
         #zxc 先矫正位置，然后反推速度
         pos2_corrected, vel2_corrected = self.compute_new_pos_vel(
