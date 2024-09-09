@@ -312,47 +312,131 @@ def run_sim_torch(trainscript_module, weights_path, scene, num_steps,
     # init the network
     model = trainscript_module.create_model()
     weights = torch.load(weights_path)
+
+
+
+    weighttf=[]
+
+    layername=['cvf','cvo','cv1','cv2','cv3','d0','d1','d2','d3']
+    for i in layername:
+        print('----------'+str(i)+'\t[layer]----------------')
+        data=(np.load ('./weightnp/'+i+ '.npz'))
+        print(data['weights'].shape)
+        print(data['biases'].shape)
+        weighttf.append(data)
+
+
+
+    for k,v in weights.items():#know 视图view无法修改
+        print('----------'+str(k)+'\t [torch layer]----------------')
+        print(v.shape)
+        # print(type(v))//tensor
+
+
+    with torch.no_grad():  # 确保在不需要计算梯度的情况下设置权重  
+      
+        weights['conv0_fluid.kernel']=torch.from_numpy(weighttf[0]['weights'])
+        weights['conv0_fluid.bias']=torch.from_numpy(weighttf[0]['biases'])
+
+
+        weights['conv0_obstacle.kernel']=torch.from_numpy(weighttf[1]['weights'])
+        weights['conv0_obstacle.bias']=torch.from_numpy(weighttf[1]['biases'])
+
+        weights['conv1.kernel']=torch.from_numpy(weighttf[2]['weights'])
+        weights['conv1.bias']=torch.from_numpy(weighttf[2]['biases'])
+
+        weights['conv2.kernel']=torch.from_numpy(weighttf[3]['weights'])
+        weights['conv2.bias']=torch.from_numpy(weighttf[3]['biases'])
+
+
+        weights['conv3.kernel']=torch.from_numpy(weighttf[4]['weights'])
+        weights['conv3.bias']=torch.from_numpy(weighttf[4]['biases'])
+
+        weights['dense0_fluid.weight']=torch.from_numpy(weighttf[5]['weights'].T)
+        weights['dense0_fluid.bias']=torch.from_numpy(weighttf[5]['biases'])
+
+        weights['dense1.weight']=torch.from_numpy(weighttf[6]['weights'].T)
+        weights['dense1.bias']=torch.from_numpy(weighttf[6]['biases'])
+
+        
+        weights['dense2.weight']=torch.from_numpy(weighttf[7]['weights'].T)
+        weights['dense2.bias']=torch.from_numpy(weighttf[7]['biases'])
+
+        weights['dense3.weight']=torch.from_numpy(weighttf[8]['weights'].T)
+        weights['dense3.bias']=torch.from_numpy(weighttf[8]['biases'])
+
+        print('[changed]')
+
+
+
+
+
     model.load_state_dict(weights)
     model.to(device)
     model.requires_grad_(False)
 
-    # prepare static particles
-    walls = []
-    for x in scene['walls']:
-        points, normals = obj_surface_to_particles(x['path'])
-        if 'invert_normals' in x and x['invert_normals']:
-            normals = -normals
-        points += np.asarray([x['translation']], dtype=np.float32)
-        walls.append((points, normals))
-    box = np.concatenate([x[0] for x in walls], axis=0)
-    box_normals = np.concatenate([x[1] for x in walls], axis=0)
+    if not os.path.exists('./cache/'+scenejsonname+'-f.npy'):#know
+        print('[no scene ply cache]') 
+        # prepare static particles
+        walls = []
+        for x in scene['walls']:
+            points, normals = obj_surface_to_particles(x['path'])
+            if 'invert_normals' in x and x['invert_normals']:
+                normals = -normals
+                print('[invert normal]')
+            points += np.asarray([x['translation']], dtype=np.float32)
+            walls.append((points, normals))
+        box = np.concatenate([x[0] for x in walls], axis=0)
+        box_normals = np.concatenate([x[1] for x in walls], axis=0)
 
-    # export static particles
-    write_particles(os.path.join(output_dir, 'box'), box, box_normals, options)
+        # export static particles
+        write_particles(os.path.join(output_dir, 'box'), box, box_normals, options)
 
-    # compute lowest point for removing out of bounds particles
-    min_y = np.min(box[:, 1]) - 0.05 * (np.max(box[:, 1]) - np.min(box[:, 1]))
+        # compute lowest point for removing out of bounds particles
+        min_y = np.min(box[:, 1]) - 0.05 * (np.max(box[:, 1]) - np.min(box[:, 1]))
 
-    box = torch.from_numpy(box).to(device)
+
+
+        # prepare fluids
+        fluids = []
+        for x in scene['fluids']:
+            points = obj_volume_to_particles(x['path'])[0]
+            points += np.asarray([x['translation']], dtype=np.float32)
+            velocities = np.empty_like(points)
+            velocities[:, 0] = x['velocity'][0]
+            velocities[:, 1] = x['velocity'][1]
+            velocities[:, 2] = x['velocity'][2]
+            range_ = range(x['start'], x['stop'], x['step'])
+            fluids.append(
+                (points.astype(np.float32), velocities.astype(np.float32), range_))
+            #zxc
+        np.save('./cache/'+scenejsonname+"-f",fluids)
+        np.save('./cache/'+scenejsonname+"-box",box)
+        np.save('./cache/'+scenejsonname+"-boxn",box_normals)
+
+     
+    else:
+        print('[use cache]')
+        fluids=     np.load('./cache/'+scenejsonname+"-f.npy",allow_pickle=True)
+        box=        np.load('./cache/'+scenejsonname+"-box.npy",allow_pickle=True)
+        box_normals=np.load('./cache/'+scenejsonname+"-boxn.npy",allow_pickle=True)
+
+        print(fluids.dtype)
+        print(fluids.shape)
+
+        # print(box.dtype)
+        # print(box.shape)
+        # assert(False)
+
+    box = torch.from_numpy(box).to(device)  
     box_normals = torch.from_numpy(box_normals).to(device)
 
-    # prepare fluids
-    fluids = []
-    for x in scene['fluids']:
-        points = obj_volume_to_particles(x['path'])[0]
-        points += np.asarray([x['translation']], dtype=np.float32)
-        velocities = np.empty_like(points)
-        velocities[:, 0] = x['velocity'][0]
-        velocities[:, 1] = x['velocity'][1]
-        velocities[:, 2] = x['velocity'][2]
-        range_ = range(x['start'], x['stop'], x['step'])
-        fluids.append(
-            (points.astype(np.float32), velocities.astype(np.float32), range_))
+
 
     pos = np.empty(shape=(0, 3), dtype=np.float32)
     vel = np.empty_like(pos)
 
-    for step in range(num_steps):
+    for step in tqdm(range(num_steps)):
         # add from fluids to pos vel arrays
         for points, velocities, range_ in fluids:
             if step in range_:  # check if we have to add the fluid at this point in time
