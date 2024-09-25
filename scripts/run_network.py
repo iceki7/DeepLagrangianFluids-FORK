@@ -19,11 +19,18 @@ from write_ply import write_ply
 np.random.seed(1234)
 
 
+
+prm_wallmove=1
+prm_motion='still'
+
+
 prm_maxenergy=1
 prm_pointwise=0
-
-
+prm_area=0
 prm_mask=0
+prm_savelvel=0
+
+
 
 eps=4
 prm_round=0
@@ -64,8 +71,10 @@ def write_particles(path_without_ext, pos, vel=None, options=None):
     if not vel is None:
         arrs['vel'] = vel
 
-    #prm_
-    # np.savez(path_without_ext + '.npz', **arrs)
+        
+    if(prm_savelvel):
+        arrs={'vel':vel}
+        np.savez(path_without_ext + '.npz', **arrs)
 
     if options and options.write_ply:
         pcd = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(pos))
@@ -107,7 +116,26 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
         model4.load_weights("csm300_1111.h5", by_name=True)
 
 
-    
+        # layername=['cvf','cvo','cv1','cv2','cv3','d0','d1','d2','d3']
+        # mname=['csm_df300_1111','csm_mp300','pretrained_model_weights','csm300_1111']
+        # print('[layer TF]')
+        # print(model.summary())
+        # for idx,m in enumerate([model,model2,model3,model4]):
+        #     layerid=0
+        #     for layer in tqdm(m.layers):
+        #         print(str(layerid)+'\t[one layer]---------------')
+        #         # print(layer)
+        #         x=layer.get_weights()
+        #         print(len(x))
+        #         # print(type(x))
+
+        #         # print(type(x[0]))
+        #         print(x[0].shape)
+        #         print(x[1].shape)
+        #         np.savez('/w/cconv-dataset/npweight/'+mname[idx]+'/'+layername[layerid]+'.npz', weights=x[0], biases=x[1])
+        #         layerid+=1
+        # exit(0)
+
     else:
         print('[single]')
     #COPY
@@ -121,6 +149,10 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
 
         # prepare static particles
         walls = []
+        wallinfo=[]
+
+
+        print('-------wall------')
         for x in scene['walls']:
             points, normals = obj_surface_to_particles(x['path'])
             if 'invert_normals' in x and x['invert_normals']:
@@ -128,7 +160,13 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
                 print('[invert normal]')
             points += np.asarray([x['translation']], dtype=np.float32)
             walls.append((points, normals))
+
+            print('wall sp\t'+str(points.shape))
+            wallinfo.append(points.shape)
         box = np.concatenate([x[0] for x in walls], axis=0)
+        print('all wall sp\t'+str(box.shape))
+        # assert(False)
+
         box_normals = np.concatenate([x[1] for x in walls], axis=0)
 
         # export static particles
@@ -152,12 +190,15 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
         np.save('./cache/'+scenejsonname+"-f",fluids)
         np.save('./cache/'+scenejsonname+"-box",box)
         np.save('./cache/'+scenejsonname+"-boxn",box_normals)
+        np.save('./cache/'+scenejsonname+"-wallinfo",wallinfo)
+
     else:
         print('[use cache]')
+        # assert(False)
         fluids=     np.load('./cache/'+scenejsonname+"-f.npy",allow_pickle=True)
         box=        np.load('./cache/'+scenejsonname+"-box.npy",allow_pickle=True)
         box_normals=np.load('./cache/'+scenejsonname+"-boxn.npy",allow_pickle=True)
-
+        wallinfo=   np.load('./cache/'+scenejsonname+"-wallinfo.npy",allow_pickle=True)
 
     pos = np.empty(shape=(0, 3), dtype=np.float32)
     vel = np.empty_like(pos)
@@ -172,14 +213,15 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
         # add from fluids to pos vel arrays
         for points, velocities, range_ in fluids:
             if step in range_:  # check if we have to add the fluid at this point in time
-                pos = np.concatenate([pos, points], axis=0)
+                pos = np.concatenate([pos, points], axis=0)#know
                 vel = np.concatenate([vel, velocities], axis=0)
 
 
         #testterm y0
         # if(step<=30 and step>=1):
-        #     vel=vel.numpy()
-        #     vel[:,1]=0
+        #     if(not isinstance(pos, np.ndarray)):
+        #         vel=vel.numpy()
+        #     vel[:,1]=0.0
         #     import tensorflow as tf
         #     vel=tf.convert_to_tensor(vel)
 
@@ -255,7 +297,26 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
             # box=np.random.rand(*box.shape)
             # box_normals=np.random.rand(*box_normals.shape)
 
+
+
+                    
             inputs = (pos, vel, None, box, box_normals)
+
+            if(prm_wallmove):
+                #需要移动的wall是第1个
+                from movewall_strategy import movewall_still
+                wallmoveidx=wallinfo[0][0]
+                if(prm_motion=='0602'):     
+                    pass
+                elif(prm_motion=='still'):
+                    # movewall_still (step=step,wallmoveidx=wallmoveidx,box=box)
+                    movewall_still(step=step,wallmoveidx=wallmoveidx,box=box)
+                   
+
+
+      
+
+
             if(prm_round):
                 pos=np.round(pos,eps)
                 vel=np.round(vel,eps)
@@ -300,7 +361,8 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
         mat1=model.aenergy,\
         mat2=model.adelta_energy,\
         mat3=model.mtimes,
-        mat4=(model.morder_pointwise if prm_pointwise else model.morder))
+        mat4=(model.morder_pointwise if prm_pointwise else model.morder),
+        mat5=model.adelta_energy2)
         #know
 
 

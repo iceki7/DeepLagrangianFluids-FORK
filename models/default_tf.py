@@ -1,4 +1,50 @@
 import tensorflow as tf
+
+
+# gpus = tf.config.experimental.list_physical_devices('GPU')
+# if gpus:
+#   try:
+#     for gpu in gpus:
+#       tf.config.experimental.set_memory_growth(gpu, True)
+#   except RuntimeError as e:
+#     print(e)
+
+
+
+#如果同时需要运行taichi，要记得限制内存-------------
+#太小有可能跑不了（哪怕没有taichi）
+# gpus = tf.config.experimental.list_physical_devices('GPU')
+# tf.config.experimental.set_virtual_device_configuration(gpus[0], 
+#    [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=1024*20)])
+
+
+
+
+import os 
+# 设置环境变量，只显示错误日志
+# os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+# print(type(os.environ["CUDA_VISIBLE_DEVICES"]))
+# TEMPCUDA=os.environ["CUDA_VISIBLE_DEVICES"]
+# os.environ["CUDA_VISIBLE_DEVICES"] = ""#使用CPU
+# # 打印当前TensorFlow版本
+# print("TensorFlow version:", tf.__version__)
+# # 设置TensorFlow只使用CPU
+# tf.config.set_visible_devices(tf.config.list_physical_devices('CPU'), 'CPU')
+
+
+
+
+
+# from tensorflow.python.client import device_lib as _device_lib
+# local_device_protos = _device_lib.list_local_devices()
+# devices = [x.name for x in local_device_protos]
+# for d in devices:
+# 	print(d)
+# assert(False)
+
+#-------------------------------------------------
+
+
 import open3d.ml.tf as ml3d
 import numpy as np
 
@@ -8,7 +54,7 @@ from train_network_tf import bvor,dt_frame
 # np.set_printoptions(precision=100)
 
 tempcnt=0
-from energy import getEnergy,getDeltaEnergy
+from energy import getEnergy,getDeltaEnergy,getDeltaEnergy2
 from run_network import prm_maxenergy,prm_pointwise,prm_area
 
 
@@ -39,6 +85,8 @@ class MyParticleNetwork(tf.keras.Model):
         self.mtimes=[0,0,0,0]
         self.aenergy=[]
         self.adelta_energy=[]
+        self.adelta_energy2=[]
+
         self.morder=[]
         self.morder_pointwise=[]
         self.correctmodel_pointwise=None
@@ -218,11 +266,14 @@ class MyParticleNetwork(tf.keras.Model):
         energy=np.sum(getEnergy(vel=_vel))/partnum
         self.aenergy.append(energy)    
         print('[energy]\t'+str(energy))
-        if(energy>15):
-            print('too much energy')
-            exit(0)
+
+        #testterm toomuch
+        # if(energy>15):
+        #     print('too much energy')
+        #     exit(0)
 
         
+
 
         #zxc 简单施加重力后的结果
         pos2, vel2 = self.integrate_pos_vel(pos, vel)
@@ -477,11 +528,19 @@ class MyParticleNetwork(tf.keras.Model):
             print('[z1]')
 
 
-            idx_area=np.argmax([delta_energy1_area,\
-                                delta_energy2_area,\
-                                delta_energy3_area,\
-                                delta_energy4_area])
-            
+            #prm
+            if(prm_maxenergy):
+                idx_area=np.argmin([delta_energy1_area,\
+                                    delta_energy2_area,\
+                                    delta_energy3_area,\
+                                    delta_energy4_area])
+            else:
+                idx_area=np.argmax([delta_energy1_area,\
+                                    delta_energy2_area,\
+                                    delta_energy3_area,\
+                                    delta_energy4_area])
+
+
 
             if(idx_area==1-1):
                 pos_correction_area=pos_correction1
@@ -552,6 +611,14 @@ class MyParticleNetwork(tf.keras.Model):
             self.adelta_energy.append(delta_energys[idxmin]/partnum)
             
 
+        gravity_mat=np.tile(np.array([0,-9.81,0]),(partnum,1))
+        self.adelta_energy2.append(np.sum(getDeltaEnergy2(
+                    dt=self.timestep,
+                    dx=pos_correction,
+                    v=vel,
+                    g=gravity_mat)
+                )/partnum)
+
         # print('[vel mean]')
         # print(np.mean(_pos_correction1))
         # print(np.mean(_pos_correction2))
@@ -589,9 +656,12 @@ class MyParticleNetwork(tf.keras.Model):
         energy=np.sum(getEnergy(vel=_vel))/partnum
         self.aenergy.append(energy)
         print('[energy]\t'+str(energy))
-        if(energy>15):
-            print('too much energy')
-            exit(0)
+
+
+        #testterm toomuch
+        # if(energy>15):
+        #     print('too much energy')
+        #     exit(0)
 
         #zxc 简单施加重力后的结果
         pos2, vel2 = self.integrate_pos_vel(pos, vel)
@@ -601,6 +671,18 @@ class MyParticleNetwork(tf.keras.Model):
             pos2, vel2, feats, box, box_feats, fixed_radius_search_hash_table)
         
         self.adelta_energy.append(np.sum(getDeltaEnergy(v=vel2,dv=pos_correction/self.timestep))/partnum)
+        print('[delta Energy]')
+        print(self.adelta_energy[-1])
+        gravity_mat=np.tile(np.array([0,-9.81,0]),(partnum,1))
+        self.adelta_energy2.append(np.sum(getDeltaEnergy2(
+                    dt=self.timestep,
+                    dx=pos_correction,
+                    v=vel,
+                    g=gravity_mat)
+                )/partnum)
+        print(self.adelta_energy2[-1])
+    
+
 
         #zxc 先矫正位置，然后反推速度
         pos2_corrected, vel2_corrected = self.compute_new_pos_vel(
