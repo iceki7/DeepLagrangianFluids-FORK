@@ -12,6 +12,26 @@ rad=1
 rad=2.5
 
 
+import tensorflow as tf
+import numpy as np
+
+
+#自转
+def rotationself(wallmoveidx,box):
+    vel=1.0/40.0
+    angle = tf.constant(np.pi * vel)  
+    # 定义绕 y 轴的旋转矩阵
+    rotation_matrix = tf.stack([
+        [tf.cos(angle),0, tf.sin(angle)],
+        [0, 1, 0],
+        [-tf.sin(angle), 0,tf.cos(angle)],
+    ])
+
+    box[wallmoveidx:]=tf.matmul(box[wallmoveidx:], rotation_matrix)
+
+
+
+
 def movewall_still(step,wallmoveidx,box):
     global theta,omega,rad
 
