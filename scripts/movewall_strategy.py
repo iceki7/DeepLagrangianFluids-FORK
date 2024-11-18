@@ -16,9 +16,32 @@ import tensorflow as tf
 import numpy as np
 
 
+def movewavetower(wallmoveidx,boardnum,box,direct=1.0):
+    speed=0.015
+    box[wallmoveidx:wallmoveidx+boardnum , 0]+=speed*direct
+
+
+def boatdown(wallmoveidx,box):
+    scale=2
+    if(scale==1):
+        speed=0.05
+        speed=0.005
+    elif(scale==2):
+        speed=0.011
+        speed=0.0135
+
+    
+
+
+    box[wallmoveidx:,1]-=speed
+
+
+
+
+
 #自转
-def rotationself(wallmoveidx,box):
-    vel=1.0/40.0
+def rotationself(wallmoveidx,box,center=tf.constant([0,0,0]),vel=1.0/40.0):
+    
     angle = tf.constant(np.pi * vel)  
     # 定义绕 y 轴的旋转矩阵
     rotation_matrix = tf.stack([
@@ -27,7 +50,7 @@ def rotationself(wallmoveidx,box):
         [-tf.sin(angle), 0,tf.cos(angle)],
     ])
 
-    box[wallmoveidx:]=tf.matmul(box[wallmoveidx:], rotation_matrix)
+    box[wallmoveidx:]=tf.matmul(box[wallmoveidx:]-center, rotation_matrix)+center
 
 
 

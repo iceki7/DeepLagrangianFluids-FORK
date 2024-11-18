@@ -1,0 +1,41 @@
+{
+    "walls":[
+
+        {
+            "path":"../datasets/models/large2box.obj",
+            "translation":[
+                -0.888,
+                0,
+                1.20469
+            ]
+        },
+        {
+            "path":"../datasets/models/rotating_panel_panel.obj",
+            "translation":[
+                -3.2,
+                -0.7,
+                -1
+            ],
+            "invert_normals":1,
+            "scale":0.6
+        }
+    ],
+    "fluids":[
+        {
+            "path":"../datasets/models/unitcube.obj",
+            "velocity":[
+                0,
+                0,
+                0
+            ],
+            "translation":[
+                0,
+                0,
+                0
+            ],
+            "start":0,
+            "stop":1,
+            "step":1
+        }
+    ]
+}

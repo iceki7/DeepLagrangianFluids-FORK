@@ -1,0 +1,42 @@
+{
+    "walls":[
+
+        {
+            "path":"../datasets/models/unitcube.obj",
+            "translation":[
+                0,
+                0.495453,
+                0
+            ],
+            "scale":4
+        },
+        {
+            "path":"../datasets/models/propeller1rot.obj",
+            "translation":[
+                0,
+                1,
+                0
+            ],
+            "invert_normals":1,
+            "scale":0.8
+        }
+    ],
+    "fluids":[
+        {
+            "path":"../datasets/models/unitcube.obj",
+            "velocity":[
+                0,
+                0,
+                0
+            ],
+            "translation":[
+                0,
+                0,
+                0
+            ],
+            "start":0,
+            "stop":1,
+            "step":1
+        }
+    ]
+}

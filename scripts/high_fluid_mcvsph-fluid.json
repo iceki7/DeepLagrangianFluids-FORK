@@ -1,0 +1,30 @@
+{
+    "walls":[
+        {
+            "path":"../datasets/models/high_fluid_mcvsph-box.obj",
+            "translation":[
+                0,
+                0,
+                0
+            ]
+        }
+    ],
+    "fluids":[
+        {
+            "path":"../datasets/models/high_fluid_mcvsph-fluid.obj",
+            "velocity":[
+                0,
+                0,
+                0
+            ],
+            "translation":[
+                0,
+                0,
+                0
+            ],
+            "start":0,
+            "stop":1,
+            "step":1
+        }
+    ]
+}

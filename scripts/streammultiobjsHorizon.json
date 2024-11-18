@@ -1,0 +1,46 @@
+{
+    "walls":[
+        {
+            "path":"../datasets/models/streammultiobjsbox.obj",
+			"scale":2,
+            "translation":[
+                11,
+                1.6,
+                2
+            ]
+        },
+        {
+            "objectId": 3,
+			"path": "../datasets/models/Dragon_50k.obj",
+			"translation": [8, 0.1, 2.0],
+			"invert_normals":1,
+			"rotationAxis": [0, 1, 0],
+			"rotationAngle": 10,
+			"scale":2.8,
+			"velocity": [0.0, 0.0, 0.0],
+			"density": 1000.0,
+			"color": [255, 255, 0], 
+			"isDynamic": false
+		}
+
+        
+    ],
+    "fluids":[
+        {
+            "path":"../datasets/models/Fluid.obj",
+            "velocity":[
+                0.0,
+                0,
+                0.0
+            ],
+            "translation":[
+                0,
+                0,
+                0
+            ],
+            "start":0,
+            "stop":1,
+            "step":1
+        }
+    ]
+}
