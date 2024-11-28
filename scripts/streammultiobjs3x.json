@@ -1,0 +1,61 @@
+{
+    "walls":[
+        {
+            "path":"../datasets/models/streammultiobjsbox.obj",
+			"scale":3,
+            "translation":[
+                16.5,
+                2.4,
+                3
+            ]
+        },
+        {
+            "objectId": 2,
+			"path": "../datasets/models/horizontal_board_transed.obj",
+			"translation": [0,-0.3, 0],
+			"invert_normals":1,
+			"rotationAxis": [0, 0, 1],
+			"rotationAngle": 0,
+			"velocity": [0.0, 0.0, 0.0],
+			"density": 1000.0,
+			"color": [255, 255, 255], 
+			"scale":3,
+			"isDynamic": false
+		},
+		
+	
+		{
+            "objectId": 5,
+			"path": "../datasets/models/bunny_sparse.obj",
+			"translation": [18.5, -0.479, 2.956],
+			"invert_normals":1,
+			"rotationAxis": [0, 1, 0],
+			"rotationAngle": 10,
+			"scale":20,
+			"velocity": [0.0, 0.0, 0.0],
+			"density": 1000.0,
+			"color": [255, 255, 0], 
+			"isDynamic": false
+		}
+
+        
+    ],
+    "fluids":[
+        {
+            "path":"../datasets/models/Fluid.obj",
+            "velocity":[
+                0.0,
+                0,
+                0.0
+            ],
+            "translation":[
+                0,
+                0,
+                0
+            ],
+            "start":0,
+            "stop":1,
+            "step":1
+        }
+    ]
+}

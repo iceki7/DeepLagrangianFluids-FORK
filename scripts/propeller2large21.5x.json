@@ -1,0 +1,43 @@
+{
+    "walls":[
+
+        {
+            "path":"../datasets/models/large2box.obj",
+            "translation":[
+                0,
+                0,
+                0
+            ],
+            "scale":1.5
+            
+        },
+        {
+            "path":"../datasets/models/propeller2_mirror.obj",
+            "translation":[
+                0,
+                0.6,
+                0
+            ],
+            "invert_normals":1,
+            "scale":4.5
+        }
+    ],
+    "fluids":[
+        {
+            "path":"../datasets/models/unitcube.obj",
+            "velocity":[
+                0,
+                0,
+                0
+            ],
+            "translation":[
+                0,
+                0,
+                0
+            ],
+            "start":0,
+            "stop":1,
+            "step":1
+        }
+    ]
+}

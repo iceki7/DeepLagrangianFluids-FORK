@@ -1,6 +1,8 @@
 import tensorflow as tf
 
 
+from tuneCurve import *
+from util import getnpz
 # gpus = tf.config.experimental.list_physical_devices('GPU')
 # if gpus:
 #   try:
@@ -15,7 +17,7 @@ import tensorflow as tf
 #太小有可能跑不了（哪怕没有taichi）
 # gpus = tf.config.experimental.list_physical_devices('GPU')
 # tf.config.experimental.set_virtual_device_configuration(gpus[0], 
-#    [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=1024*20)])
+#    [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=1024*24)])
 
 
 
@@ -54,8 +56,34 @@ from train_network_tf import bvor,dt_frame
 # np.set_printoptions(precision=100)
 
 tempcnt=0
-from energy import getEnergy,getDeltaEnergy,getDeltaEnergy2
-from run_network import prm_maxenergy,prm_pointwise,prm_area
+from energy import *
+from run_network import prm_maxenergy,prm_pointwise,prm_area,prm_sus,\
+prm_linear,prm_customtune,prm_mlpexact,prm_mlpexact_2,\
+prm_needratio,\
+prm_energyratio,\
+ratio0,\
+prm_3dim,\
+prm_exactarg,\
+prm_horizon,\
+prmmixstable,\
+prmstableratio,\
+prmtune0,\
+prmtuneend
+
+movetime=150
+
+
+
+prm_train=0
+
+if(prm_linear):
+    if(prm_mlpexact):
+        from mlp2_train_exact import predictincconv_exact
+    elif(prm_mlpexact_2):
+        from mlp2_train_exact___2 import predictincconv_exact,relumatrix
+
+    else:
+        from mlp2_train import predictincconv
 
 
 
@@ -77,7 +105,14 @@ class MyParticleNetwork(tf.keras.Model):
                  timestep=1 / 50,
                  #prm ie 0.02
 
-                 gravity=(0, -9.81, 0)):
+                 gravity=(0, -9.81, 0)
+
+
+
+                 #horizon
+                #  gravity=(1.5, -9.6845, 0)
+
+                 ):
                  #prm
         super().__init__(name=type(self).__name__)
         
@@ -86,12 +121,48 @@ class MyParticleNetwork(tf.keras.Model):
         self.aenergy=[]
         self.adelta_energy=[]
         self.adelta_energy2=[]
+        self.acoff=[]
+        
+        self.acoff_area=[]
+        self.acoff_other=[]
+        self.aenergy_area=[]
+        self.aenergy_other=[]
+        self.apartnum_area=[]
+        self.agammahat=[]
+        self.agamma=[]
+        self.aenergymax=[]
+        self.aenergymin=[]
+        self.aenergypre=[]
+        self.agammahat2=[]
+        self.afmax=[]
+        self.afmin=[]
+        self.aemin=[]
+        self.aemax=[]
+      
+        self.afratio=[]
+        self.afratioactual=[]
+        self.aeratio=[]
+        self.aeratioacual=[]
+
+
+        if(prm_horizon):
+            gravity=(1.5, -9.6845, 0)
+         
+
+
+        ID_ENERGY='mat1'
+        self.aargmax=getnpz('cp__emax_b_csm_df300_1111mc_ball_2velx_0602')[ID_ENERGY][0:999]
+        self.aargmin=getnpz('cp__emin_b_csm_df300_1111mc_ball_2velx_0602')[ID_ENERGY][0:999]
+        print(self.aargmax.shape)#999,
+        # assert(False)
+
 
         self.morder=[]
         self.morder_pointwise=[]
         self.correctmodel_pointwise=None
         self.modelnum=4
-        
+
+        self.gravity_vec=np.array([0,-9.81,0])
 
         self.layer_channels = [32, 64, 64, 3]
         self.kernel_size = kernel_size
@@ -157,6 +228,9 @@ class MyParticleNetwork(tf.keras.Model):
 
         self.convs = []
         self.denses = []
+
+        self.mask=-1
+        #次级的卷积和全连接
         for i in range(1, len(self.layer_channels)):
             ch = self.layer_channels[i]
             dense = tf.keras.layers.Dense(units=ch,
@@ -213,7 +287,16 @@ class MyParticleNetwork(tf.keras.Model):
         self.ans_dense0_fluid = self.dense0_fluid(fluid_feats)
         self.ans_conv0_obstacle = self.conv0_obstacle(box_feats, box, pos,
                                                       filter_extent)
+        
+        # 第一次concat
+        
+        # print(self.ans_conv0_fluid.shape)#partnum 32。卷积核数=32，依次作用于每一个粒子
+        # print(self.ans_dense0_fluid.shape)
+        # print(self.ans_conv0_obstacle.shape)
 
+        # if(self.ans_conv0_fluid.shape[0]!=1):
+        #     assert(False)
+        
         feats = tf.concat([
             self.ans_conv0_obstacle, self.ans_conv0_fluid, self.ans_dense0_fluid
         ],
@@ -222,6 +305,11 @@ class MyParticleNetwork(tf.keras.Model):
         self.ans_convs = [feats]
         for conv, dense in zip(self.convs, self.denses):
             inp_feats = tf.keras.activations.relu(self.ans_convs[-1])
+            # print('inp f')
+            # print(inp_feats.shape)
+            #partnum 96
+            #partnum 64
+            #partnum 64
             ans_conv = conv(inp_feats, pos, pos, filter_extent)
             ans_dense = dense(inp_feats)
             if ans_dense.shape[-1] == self.ans_convs[-1].shape[-1]:
@@ -229,7 +317,7 @@ class MyParticleNetwork(tf.keras.Model):
             else:
                 ans = ans_conv + ans_dense
             self.ans_convs.append(ans)
-
+        # assert(False)
         #zxc
         # compute the number of fluid neighbors.
         # this info is used in the loss function during training.
@@ -244,7 +332,7 @@ class MyParticleNetwork(tf.keras.Model):
         self.pos_correction = (1.0 / 128) * self.ans_convs[-1]
         return self.pos_correction
         #zxc
-    def call2(self,model2,model3,model4,\
+    def call2(self,model2,model3,model4,model5,\
     inputs,step,num_steps, fixed_radius_search_hash_table=None):
         #zxc 前向过程
         
@@ -258,19 +346,33 @@ class MyParticleNetwork(tf.keras.Model):
           normals of the static particles.
         """
         pos, vel, feats, box, box_feats = inputs
+        print(type(pos))#numpy
+        print(type(vel))#numpy
 
+        #第一次是，后面就不是了
+        # if not isinstance(pos,np.ndarray):
+        #     assert(False)
+
+
+        # tf.convert_to_tensor(numpy_array)
+
+        # assert(False)
 
         # _vel=vel.numpy()
         _vel=vel    #is numpy
         partnum=pos.shape[0]
-        energy=np.sum(getEnergy(vel=_vel))/partnum
+        energy=getEnergy(vel=_vel,mask=self.mask,partnum=partnum)
+        # if(not isinstance(self.mask, int)):
+        #     print('legalpartnum\t'+str(np.sum(self.mask.cpu().numpy().astype(np.int))))
+        tune=-1
+
         self.aenergy.append(energy)    
         print('[energy]\t'+str(energy))
 
         #testterm toomuch
-        # if(energy>15):
+        # if(energy>30):
         #     print('too much energy')
-        #     exit(0)
+        #     assert(False)
 
         
 
@@ -289,6 +391,20 @@ class MyParticleNetwork(tf.keras.Model):
         pos_correction4=model4.compute_correction(
             pos2, vel2, feats, box, box_feats, fixed_radius_search_hash_table)
 
+        global prmmixstable
+        if(prmmixstable):
+            pos_correction5=model5.compute_correction(
+            pos2, vel2, feats, box, box_feats, fixed_radius_search_hash_table)
+
+
+        energynext1=np.sum(    getEnergynextBest(pos_correction=pos_correction1,dt_frame=dt_frame,_vel=_vel,gravity_vec=self.gravity_vec)  )/partnum
+        energynext2=np.sum(    getEnergynextBest(pos_correction=pos_correction2,dt_frame=dt_frame,_vel=_vel,gravity_vec=self.gravity_vec)  )/partnum
+        energynext3=np.sum(    getEnergynextBest(pos_correction=pos_correction3,dt_frame=dt_frame,_vel=_vel,gravity_vec=self.gravity_vec)  )/partnum
+        energynext4=np.sum(    getEnergynextBest(pos_correction=pos_correction4,dt_frame=dt_frame,_vel=_vel,gravity_vec=self.gravity_vec)  )/partnum
+
+
+        energynexts=[energynext1,energynext2,energynext3,energynext4]
+
 
         alpha=0.5
         global tempcnt
@@ -303,11 +419,27 @@ class MyParticleNetwork(tf.keras.Model):
 
 
 
-        #testterm sus
-        # if(ratio<=0.3 or ratio>=0.7):
-        #     prm_maxenergy=0
-        # else:
-        #     prm_maxenergy=1
+        if(prm_sus):
+            movetime=320
+            assert(movetime>0)
+
+            print('[SUS]\t'+str(movetime))
+            if(step<=movetime):
+                prmmixstable=0
+                prm_maxenergy=0
+
+                
+                
+            else:
+                prmmixstable=0
+                prm_maxenergy=0
+
+               
+                
+            # if(step<=500 or (step>=900)):
+            #     prm_maxenergy=1
+            # else:
+            #     prm_maxenergy=0
 
 
         
@@ -336,12 +468,16 @@ class MyParticleNetwork(tf.keras.Model):
         dv3=_pos_correction3/self.timestep
         dv4=_pos_correction4/self.timestep
 
-
-
+        
+        delta_energy_mat1=0
+        delta_energy_mat2=0
+        delta_energy_mat3=0
+        delta_energy_mat4=0
         delta_energy_mat1=np.sum(getDeltaEnergy(v=_vel2,dv=dv1),axis=1)#know 沿着某个维度求和
         delta_energy_mat2=np.sum(getDeltaEnergy(v=_vel2,dv=dv2),axis=1)
         delta_energy_mat3=np.sum(getDeltaEnergy(v=_vel2,dv=dv3),axis=1)
         delta_energy_mat4=np.sum(getDeltaEnergy(v=_vel2,dv=dv4),axis=1)
+
         delta_energy_mat=[]
         delta_energy_mat.append(delta_energy_mat1)
         delta_energy_mat.append(delta_energy_mat2)
@@ -372,28 +508,53 @@ class MyParticleNetwork(tf.keras.Model):
 
             #找出每个点修正的量来自于哪个模型
             if(prm_maxenergy):
-                temp=np.maximum(delta_energy_mat[1-1],delta_energy_mat[2-1])
-                temp=np.maximum(temp,delta_energy_mat[3-1])
-                temp=np.maximum(temp,delta_energy_mat[4-1])
+
+                temp=tf.maximum(delta_energy_mat[1-1],delta_energy_mat[2-1])
+                temp=tf.maximum(temp,delta_energy_mat[3-1])
+                temp=tf.maximum(temp,delta_energy_mat[4-1])
 
             else:
-                temp=np.minimum(delta_energy_mat[1-1],delta_energy_mat[2-1])
-                temp=np.minimum(temp,delta_energy_mat[3-1])
-                temp=np.minimum(temp,delta_energy_mat[4-1])
+                temp=tf.minimum(delta_energy_mat[1-1],delta_energy_mat[2-1])
+                temp=tf.minimum(temp,delta_energy_mat[3-1])
+                temp=tf.minimum(temp,delta_energy_mat[4-1])
+                # assert(False)
 
 
+                #         (temp-delta_energy_mat[modelidx])
+                # (逐点速度-速度矩阵1)。
+                # 从能量反推是来自哪个模型
 
-            for x in range(0,delta_energy_mat[1-1].shape[0]):
-                    for modelidx in range(0,self.modelnum):
-                        if(abs(temp[x]-delta_energy_mat[modelidx][x])<1e-6):
-                            bool_corrections[modelidx][x]=1
-                            self.correctmodel_pointwise[x]=modelidx
-                            break
-            self.correctmodel_pointwise=self.correctmodel_pointwise.astype(np.int8)
+            bool_corrections[0]=tf.less(tf.abs(temp-delta_energy_mat[1-1]),1e-5)
+            bool_corrections[1]=tf.less(tf.abs(temp-delta_energy_mat[2-1]),1e-5)
+            bool_corrections[2]=tf.less(tf.abs(temp-delta_energy_mat[3-1]),1e-5)
+            bool_corrections[3]=tf.less(tf.abs(temp-delta_energy_mat[4-1]),1e-5)
+
+            # tf.cast(tf.less(tf.abs(temp-delta_energy_mat[1-1]),1e-5),tf.int32)
+
+          
+
+            print(self.correctmodel_pointwise[:100])
+         
+            print(self.correctmodel_pointwise.dtype)
+            print(type(self.correctmodel_pointwise))
+
+            print('[mid pw]')
+            print(self.correctmodel_pointwise)
+            # assert(False)
+            
+            # for x in range(0,delta_energy_mat[1-1].shape[0]):
+            #         for modelidx in range(0,self.modelnum):
+            #             if(abs(temp[x]-delta_energy_mat[modelidx][x])<1e-6):
+            #                 bool_corrections[modelidx][x]=1
+            #                 self.correctmodel_pointwise[x]=modelidx
+            #                 break
+            # self.correctmodel_pointwise=self.correctmodel_pointwise.astype(np.int8)
             # print(bool_corrections[0].shape)
 
             for modelidx in range(0,self.modelnum):
-                bool_corrections[modelidx]=bool_corrections[modelidx].reshape(-1,1)#partnum 1 know
+                # bool_corrections[modelidx]=bool_corrections[modelidx].reshape(-1,1)#partnum 1 know
+                bool_corrections[modelidx]=tf.reshape(bool_corrections[modelidx],[-1,1])
+
                 bool_corrections[modelidx]=np.tile(bool_corrections[modelidx], (1, 3)) #partnum 3 know
 
             # print('[tile]')
@@ -406,13 +567,247 @@ class MyParticleNetwork(tf.keras.Model):
         # print('[300]')
         # print(((dv1**2)+2*_vel2*dv1).shape)#partnum 3
 
+        delta_energy1=0
+        delta_energy2=0
+        delta_energy3=0
+        delta_energy4=0
+
 
         delta_energy1=np.sum(delta_energy_mat1)
         delta_energy2=np.sum(delta_energy_mat2)
         delta_energy3=np.sum(delta_energy_mat3)
         delta_energy4=np.sum(delta_energy_mat4)
+      
+        if(prm_linear and (not prm_area)):
+            # tune=0.5
+            # if(step>=300):
+
+            
+            #curve
+            tune0=prmtune0
+            tuneend=prmtuneend
+            tune=x1(tune0=tune0,tuneend=tuneend,step=step,num_steps=num_steps)
+            if(step<=320):
+                tune=0.5
+            if(prm_customtune):
+                tune=np.load('tunecurve.npy')[step]
+            #line
+            # tune=((num_steps-step)**1)*tune0/num_steps**1
+            if(step>1000):
+                tune=tuneend
+
+            print('[now tune]\t'+str(tune))
+
+            # if(step<=100):
+            #     tune=0.2
+            # elif(step<=400):
+            #     tune=0.4   
+            # elif(step<=700):
+            #     tune=0.6
+            # else:
+            #     tune=1
+
+            
 
 
+            #exact 
+            if(prm_mlpexact):
+                pos_correction1perpart=tf.reduce_mean(pos_correction1,axis=0)
+                pos_correction2perpart=tf.reduce_mean(pos_correction2,axis=0)
+                pos_correction3perpart=tf.reduce_mean(pos_correction3,axis=0)
+                pos_correction4perpart=tf.reduce_mean(pos_correction4,axis=0)
+
+               
+
+                coff=predictincconv_exact(
+                    d1=pos_correction1perpart,
+                    d2=pos_correction2perpart,
+                    d3=pos_correction3perpart,
+                    d4=pos_correction4perpart,
+                    v_t=tf.reduce_mean(_vel,axis=0),
+                    gt_d2=self.gravity_vec*dt_frame/2,
+                    partnum=partnum,
+                    tune=tune
+                    
+                )
+            elif(prm_mlpexact_2):
+
+                #把所有粒子的求和
+                if(prm_3dim):
+                    pos_correction1perpart=tf.reduce_mean(pos_correction1,axis=0)
+                    pos_correction2perpart=tf.reduce_mean(pos_correction2,axis=0)
+                    pos_correction3perpart=tf.reduce_mean(pos_correction3,axis=0)
+                    pos_correction4perpart=tf.reduce_mean(pos_correction4,axis=0)
+                    xraw=np.array([
+                            np.array(pos_correction1perpart/dt_frame),\
+                            np.array(pos_correction2perpart/dt_frame),\
+                            np.array(pos_correction3perpart/dt_frame),\
+                            np.array(pos_correction4perpart/dt_frame),
+                            np.array([np.mean(_vel[:,0]),\
+                                    np.mean(_vel[:,1]),\
+                                    np.mean(_vel[:,2])]),
+                            np.array(self.gravity_vec*dt_frame/2)
+                    ]
+                            )
+                #平均速度大小
+                else:
+                    pos_correction1_normav=tf.reduce_mean(tf.sqrt(tf.reduce_sum(pos_correction1**2,axis=1)))
+                    pos_correction2_normav=tf.reduce_mean(tf.sqrt(tf.reduce_sum(pos_correction2**2,axis=1)))
+                    pos_correction3_normav=tf.reduce_mean(tf.sqrt(tf.reduce_sum(pos_correction3**2,axis=1)))
+                    pos_correction4_normav=tf.reduce_mean(tf.sqrt(tf.reduce_sum(pos_correction4**2,axis=1)))
+                    velnorm=np.mean(np.sqrt(np.sum(_vel**2,axis=1)))
+                    xraw=np.array([
+                            np.array([pos_correction1_normav/dt_frame]),\
+                            np.array([pos_correction2_normav/dt_frame]),\
+                            np.array([pos_correction3_normav/dt_frame]),\
+                            np.array([pos_correction4_normav/dt_frame]),
+                            np.array([velnorm]),
+                            np.array([-9.81*dt_frame/2])
+                    ]
+                            )
+                # print(pos_correction1perpart.shape)#3,
+
+                xraw=xraw.T
+                print(xraw.shape)#samplenum 6
+                # assert(False)
+
+                #COPY
+                fmin=[]
+                fmax=[]
+                for i in range(xraw.shape[0]):
+                    from util import relu
+                    a1=relu ( xraw[i,0])+relu( xraw[i,1])+relu( xraw[i,2])+relu( xraw[i,3])      +xraw[i,4]+xraw[i,5]
+                    a2=-relu(-xraw[i,0])-relu(-xraw[i,1])-relu(-xraw[i,2])-relu(-xraw[i,3])      +xraw[i,4]+xraw[i,5]
+                    fmax.append(a1)
+                    fmin.append(a2)
+                fmax=np.array(fmax)[:,np.newaxis].T
+                fmin=np.array(fmin)[:,np.newaxis].T
+                # print(fmax.shape)
+                # print(fmin.shape)#1 3
+                # assert(False)
+
+
+                fmin2=fmin**2
+                fmax2=fmax**2
+
+
+                mine=np.minimum(fmin**2,fmax**2)#1 3
+                maxe=np.maximum(fmin**2,fmax**2)#1 3
+                for i in range(fmax.shape[1]):
+                    if(fmax[0,i]*fmin[0,i]<0):
+                        print('f range reverse')
+                        #下一帧速度的范围可以翻转
+                        mine[0,i]=0
+
+
+             
+                # print(maxe.shape)
+                
+
+
+                print('[f min,max]'+str([fmin,fmax]))
+
+
+
+                
+                # needf0=np.sqrt((self.aargmax[step]-self.aargmin[step])*0.5+self.aargmin[step])
+                
+                if(prm_needratio):
+                    
+                    if(prm_energyratio):    #指定网络需要达到的能量比例
+                        neede=ratio0*(maxe-mine)+mine
+                        needf=np.sqrt(neede)#为了达到这个能量，速度应该是多少
+                        fratio1=( needf-fmin)/(fmax-fmin)
+
+                        fratio2=(-needf-fmin)/(fmax-fmin)
+
+                       
+
+                        fratio=np.zeros_like(fratio1)
+                        # print(fratio.shape)#1,3
+                        # assert(False)
+                        for i in range(0,fratio1.shape[1]):
+                             # 哪个速度变化更合理，就用哪个
+                            if(abs(fratio1[0,i]-0.5)<abs(fratio2[0,i]-0.5)):
+                                fratio[0,i]=fratio1[0,i]
+                            else:
+                                fratio[0,i]=fratio2[0,i]
+
+                        # print(fratio.shape)#1 3
+                        # fratio=fratio.T
+                   
+                        # assert(False)
+                    else:
+                        fratio=ratio0
+                        needf=(fmax-fmin)*fratio+fmin
+                    
+                else:
+                    needf=needf0    #直接指定网络需要达到的F
+                
+
+
+                  
+                    for i in range(fmax.shape[1]):
+                        needratio[i]=(needf-fmin[:,i])/(fmax[:,i]-fmin[:,i])
+                        print('needratio\t'+str(needratio[i]))
+                        if(needratio[i]>1.5 ):
+                            print('in capability')
+                            needratio[i]=1.5
+                        if(needratio[i]<0 ):
+                            print('in capability')
+                            needratio[i]=0                
+                  
+                            
+
+                
+
+          
+                       
+           
+
+                tune=fratio
+
+                assert(False)
+
+                k=1/np.amax(abs(xraw),axis=1)
+                k=k[...,np.newaxis]
+                xnorm=k*xraw
+                # fratio=np.array([fratio,fratio,fratio])
+                # print(fratio.shape)
+                # print(xnorm.shape)
+             
+                # assert(False)
+
+                coff=predictincconv_exact(
+                    d1=xnorm[:,0],
+                    d2=xnorm[:,1],
+                    d3=xnorm[:,2],
+                    d4=xnorm[:,3],
+                    v_t=xnorm[:,4],
+                    gt_d2=xnorm[:,5],
+                    partnum=partnum,
+                    tune=fratio
+                    
+                )
+                assert(False)
+
+            
+
+            else:
+                coff=predictincconv(delta_energy1,delta_energy2,delta_energy3,delta_energy4,partnum,tune)
+                print(tf.reduce_mean(pos_correction1,axis=0).shape)#(3,)
+                # assert(False)
+
+            print('coff:')
+
+            print(coff.shape)#3,9
+
+            # print('dE:')
+            # temp=[delta_energy1,delta_energy2,delta_energy3,delta_energy4]
+            # # print(temp.shape)
+            # print(temp)
+
+            # print(coff*delt)
         #prm_
         delta_energys=np.array([delta_energy1,delta_energy2,delta_energy3,delta_energy4])
 
@@ -422,6 +817,11 @@ class MyParticleNetwork(tf.keras.Model):
         idxmin=np.argmin(delta_energys)
         idxmax=np.argmax(delta_energys)
 
+        if(prm_exactarg):
+            idxmin=np.argmin(energynexts)
+            idxmax=np.argmax(energynexts)
+
+
 
         #testterm 1m
         # idxmax=0
@@ -430,19 +830,52 @@ class MyParticleNetwork(tf.keras.Model):
 
         # print('[delta E]\t'+str(delta_energy[1-1]))
 
-        if(prm_maxenergy):
+        if(prm_maxenergy and not prm_linear):
             pos_correction= pos_corrections[idxmax]   
+            if(prmmixstable):
+                print('STABLE\t'+str(prmstableratio))
+                pos_correction=prmstableratio    *pos_correction5 +\
+                               (1-prmstableratio)*pos_correction
+
+
+
             print('[choose]\t'+str(idxmax)) 
             self.morder.append(idxmax)
             self.mtimes[idxmax]+=1
 
-
-        else:
+        elif(not prm_maxenergy and not prm_linear):
             pos_correction= pos_corrections[idxmin]
+            if(prmmixstable):
+                print('STABLE\t'+str(prmstableratio))
+                pos_correction=prmstableratio    *pos_correction5 +\
+                               (1-prmstableratio)*pos_correction
+                # assert(False)
+            
             print('[choose]\t'+str(idxmin)) 
             self.morder.append(idxmin)
             self.mtimes[idxmin]+=1
-        
+                     
+        if(prm_linear and not(prm_area)):
+            if(not prm_mlpexact):
+                # coff=np.random.dirichlet(np.array([1.0, 1.0, 1.0, 1.0]))  
+                # print(coff.shape)
+                # assert(False)
+                pos_correction=pos_corrections[0]*coff[0,0]+\
+                pos_corrections[1]*coff[0,1]+\
+                pos_corrections[2]*coff[0,2]+\
+                pos_corrections[3]*coff[0,3]
+
+            #EXACt
+            else:
+                print(pos_corrections[0].shape)#partnum 3
+                print(coff[:,0].shape)#(1,)
+                coff=coff[:,np.newaxis]#3 1 9
+                print(coff.shape)
+                # assert(False)
+                pos_correction=pos_corrections[0]*coff[:,:,0].T+\
+                            pos_corrections[1]*coff[:,:,1].T+\
+                            pos_corrections[2]*coff[:,:,2].T+\
+                            pos_corrections[3]*coff[:,:,3].T
 
 
         if(prm_area):
@@ -458,33 +891,53 @@ class MyParticleNetwork(tf.keras.Model):
 
             #prm_
             print('filtering...')
-            area_mask = pos[:, 0] > -10 #需要保留的粒子
+            area_mask = pos[:, 2] < 0 
+
+            # area2_mask = pos[:,0] <-12
+            area2_mask = pos[:,0] <-100
+
             if not isinstance(area_mask,np.ndarray):
                 area_mask=area_mask.cpu().numpy() 
+                area2_mask=area2_mask.cpu().numpy()
 
-            temp= pos[:, 0] < -2
-            if not isinstance(temp,     np.ndarray):
-                temp=temp.cpu().numpy() 
+            # temp= pos[:, 0] < -2
+            # if not isinstance(temp,     np.ndarray):
+            #     temp=temp.cpu().numpy() 
+            # area_mask *= temp
 
-            area_mask *= temp
-            print(area_mask.shape)
+            print(area_mask.shape)#dynamic
             
 
             
                 # one=tf.ones_like(area_mask)
+            area_mask_bool=area_mask
             area_mask=area_mask.astype(np.float32)
+            area2_mask=area2_mask.astype(np.float32)
+
+            # print(area_mask_bool.dtype)
+
+            # print(area_mask.dtype)
+            # print(area_mask_bool)
+            # print(np.logical_not(area_mask_bool))
+
+            # assert(False)
+            
+            partnum_area=np.sum(area_mask)
+            print('[partnum_area]\t'+str(partnum_area))
+            # print()
+
             one=np.ones_like(area_mask)
-            print(area_mask)
+            # print(area_mask)
             
             print('[done filter]')
             # print(temp)#partnum
             # print(area_mask.shape)#partnum 1
-            print(type(area_mask))#ndarray
-            print(area_mask.dtype)#bool
-            print(type(delta_energy_mat1))#ndarray
+            # print(type(area_mask))#ndarray
+            # print(area_mask.dtype)#bool
+            # print(type(delta_energy_mat1))#ndarray
 
       
-                
+            area2_mask=np.array([area2_mask]).T
             area_mask=np.array([area_mask]).T
             one=np.array([one]).T
             delta_energy_mat1=np.array([delta_energy_mat1]).T
@@ -515,7 +968,24 @@ class MyParticleNetwork(tf.keras.Model):
             delta_energy2_area=np.sum(tf.math.multiply(area_mask,delta_energy_mat2).cpu().numpy())
             delta_energy3_area=np.sum(tf.math.multiply(area_mask,delta_energy_mat3).cpu().numpy())
             delta_energy4_area=np.sum(tf.math.multiply(area_mask,delta_energy_mat4).cpu().numpy())
+
+
+            delta_energy1_area2=np.sum(tf.math.multiply(area2_mask,delta_energy_mat1).cpu().numpy())
+            delta_energy2_area2=np.sum(tf.math.multiply(area2_mask,delta_energy_mat2).cpu().numpy())
+            delta_energy3_area2=np.sum(tf.math.multiply(area2_mask,delta_energy_mat3).cpu().numpy())
+            delta_energy4_area2=np.sum(tf.math.multiply(area2_mask,delta_energy_mat4).cpu().numpy())
+
         
+            delta_energy1_other=delta_energy1-delta_energy1_area
+            print('[area delta energs]')
+            print(delta_energy1_area)
+            print(delta_energy1_other)
+            print(np.sum(delta_energy_mat1))
+
+            delta_energy2_other =delta_energy2 - delta_energy2_area
+            delta_energy3_other =delta_energy3 - delta_energy3_area
+            delta_energy4_other =delta_energy4 - delta_energy4_area
+
 
             # if(step>0):#否则本来就是numpy
             #     if(isinstance(area_mask, np.ndarray)):
@@ -527,7 +997,18 @@ class MyParticleNetwork(tf.keras.Model):
             # delta_energy_mat1=delta_energy_mat1.cpu().numpy()
             print('[z1]')
 
+            tune0area=0.2
+            tuneareaend=0.2
 
+            
+
+            tuneother0=0.5
+            tuneotherend=0.5
+            tune_area =x1(tune0=tune0area,tuneend=tuneareaend,step=step,num_steps=num_steps)
+
+            # if(step>=250):
+            #     tune_area=0.7
+            tune_other=x1(tune0=tuneother0,tuneend=tuneotherend,step=step,num_steps=num_steps)
             #prm
             if(prm_maxenergy):
                 idx_area=np.argmin([delta_energy1_area,\
@@ -539,8 +1020,27 @@ class MyParticleNetwork(tf.keras.Model):
                                     delta_energy2_area,\
                                     delta_energy3_area,\
                                     delta_energy4_area])
+            if(prm_linear):
 
+     
 
+                coff_area= predictincconv(delta_energy1_area/partnum_area,\
+                                          delta_energy2_area/partnum_area,\
+                                          delta_energy3_area/partnum_area,\
+                                          delta_energy4_area/partnum_area,\
+                                          partnum_area,\
+                                          tune_area)
+                partnum_other=partnum-partnum_area
+        
+                coff_other=predictincconv(delta_energy1_other/partnum_other,\
+                                          delta_energy2_other/partnum_other,\
+                                          delta_energy3_other/partnum_other,\
+                                          delta_energy4_other/partnum_other,\
+                                          partnum_other,\
+                                          tune_other)
+                print('[coff]')                        
+                print(coff_area)
+                print(coff_other)
 
             if(idx_area==1-1):
                 pos_correction_area=pos_correction1
@@ -555,6 +1055,8 @@ class MyParticleNetwork(tf.keras.Model):
             # print('[z2]')
             # print(area_mask.shape)
             area_mask_tile=np.tile(area_mask,[1,3])
+            area2_mask_tile=np.tile(area2_mask,[1,3])
+
             one_tile=np.tile(one,[1,3])
             # print(area_mask.shape)
             # print(pos_correction.shape)s
@@ -564,11 +1066,41 @@ class MyParticleNetwork(tf.keras.Model):
                 area_mask_tile=tf.convert_to_tensor(area_mask_tile)
                 one_tile=tf.convert_to_tensor(one_tile)
 
-            pos_correction=\
-            (one_tile-area_mask_tile)*(
-                pos_correction
-            )+\
-            area_mask_tile* pos_correction_area
+
+            if(not prm_linear):
+                pos_correction=\
+                (one_tile-area_mask_tile)*(
+                    pos_correction
+                )+\
+                area_mask_tile* pos_correction_area
+
+            
+
+            else:
+                print(area2_mask_tile.shape)#partnum 3
+                pos_correction=\
+                (one_tile-area_mask_tile)*(one_tile-area2_mask_tile)*(
+               
+                coff_other[0,0]*pos_corrections[0]+\
+                coff_other[0,1]*pos_corrections[1]+\
+                coff_other[0,2]*pos_corrections[2]+\
+                coff_other[0,3]*pos_corrections[3]
+
+
+                )+\
+                (area2_mask_tile)*pos_corrections[idxmin]+\
+                area_mask_tile*(one_tile-area2_mask_tile)*(
+
+                coff_area[0,0]*pos_corrections[0]+\
+                coff_area[0,1]*pos_corrections[1]+\
+                coff_area[0,2]*pos_corrections[2]+\
+                coff_area[0,3]*pos_corrections[3]
+                )
+                # print(pos_corrections[1].shape)#partnum 3
+                # print(area_mask_tile.shape)#partnum 3
+                # print(one_tile.shape)#partnum 3
+
+                # assert(False)
 
         if(prm_pointwise):
             # print(bool_corrections[0].shape)#partnum 3
@@ -580,21 +1112,31 @@ class MyParticleNetwork(tf.keras.Model):
                            bool_corrections[2-1]*pos_correction2+\
                            bool_corrections[3-1]*pos_correction3+\
                            bool_corrections[4-1]*pos_correction4
+            pos_correction*=0.2
 
-
-            self.morder_pointwise.append(self.correctmodel_pointwise)
+            # self.morder_pointwise.append(self.correctmodel_pointwise)
 
             print('model 1 correct num'+str(np.sum(bool_corrections[1-1][:,0])))
             print('model 2 correct num'+str(np.sum(bool_corrections[2-1][:,0])))
             print('model 3 correct num'+str(np.sum(bool_corrections[3-1][:,0])))
             print('model 4 correct num'+str(np.sum(bool_corrections[4-1][:,0])))
 
+            # pos_correction=correct_pointwise
+
 
         #record
         print('[record]')
         if(prm_pointwise):
-            pass
-        elif(prm_area):
+            self.morder_pointwise.append(
+            [
+            np.sum(bool_corrections[1-1][:,0]),
+            np.sum(bool_corrections[2-1][:,0]),
+            np.sum(bool_corrections[3-1][:,0]),
+            np.sum(bool_corrections[4-1][:,0]),
+            ]
+
+            )
+        elif(prm_area and (not prm_linear)):
             
             # exit(0)
             temp=\
@@ -609,15 +1151,165 @@ class MyParticleNetwork(tf.keras.Model):
             self.adelta_energy.append(delta_energys[idxmax]/partnum)
         else:
             self.adelta_energy.append(delta_energys[idxmin]/partnum)
+        if(prm_linear):
+            if(prm_area):
+                self.acoff_area. append(coff_area)
+                self.acoff_other.append(coff_other)
+
+                print('[tune area]\t'+(str(tune_area)))
+                print('[tune other]\t'+(str(tune_other)))
+                print(partnum_area)
+                print(np.sum(area_mask))
+                print(partnum)
+                energy_area= getEnergy(vel=_vel,mask=area_mask_bool,                partnum=partnum)
+                energy_other=getEnergy(vel=_vel,mask=np.logical_not(area_mask_bool),partnum=partnum)
+                print('[area energy]')
+                print(energy_area)
+                print(energy_other)
+                print(energy)
+
+                # print(energy.shape)
+                # print(area_mask.shape)
+                # assert(False)
+                # print(area_mask.dtype)
+                # print((one-area_mask).dtype)
+                # assert(False)
+                self.aenergy_area.append (energy_area)
+                self.aenergy_other.append(energy_other)
+                self.apartnum_area.append(partnum_area)
+            else:
+                self.acoff.append(coff)
+        
             
 
-        gravity_mat=np.tile(np.array([0,-9.81,0]),(partnum,1))
-        self.adelta_energy2.append(np.sum(getDeltaEnergy2(
-                    dt=self.timestep,
-                    dx=pos_correction,
-                    v=vel,
-                    g=gravity_mat)
-                )/partnum)
+        gravity_mat=np.tile(self.gravity_vec,(partnum,1))
+        # self.adelta_energy2.append(np.sum(getDeltaEnergy2(
+        #             dt=self.timestep,
+        #             dx=pos_correction,
+        #             v=vel,
+        #             g=gravity_mat)
+        #         )/partnum)
+
+        
+     
+        # print(type(self.gravity))
+        # print(self.gravity.shape)
+        # print(self.gravity.dtype)
+        
+
+
+
+   
+        energynext= np.sum(    getEnergynextBest(pos_correction=pos_correction, dt_frame=dt_frame,_vel=_vel,gravity_vec=self.gravity_vec)  )/partnum
+
+        if(prm_mlpexact_2):
+            fnext=pos_correction/dt_frame + _vel + self.gravity_vec*dt_frame/2
+            fnext=np.mean(fnext,axis=0)
+            # print(k.shape)
+            # print(fnext.shape)
+            eesqr=k*fnext[:,np.newaxis]
+            ffmax=np.sum(relumatrix(xnorm[...,0:4]               ),               axis=1)+xnorm[...,4]+xnorm[...,5]
+            ffmin=np.sum(relumatrix(xnorm[...,0:4],positive=False),               axis=1)+xnorm[...,4]+xnorm[...,5]
+            #验证EE是不是真的达到了对网络所提出的要求(检查网络本身的可靠性，和原始数据无关)
+            # print(ffmax.shape)
+            # print(eesqr.shape)
+
+            print('------coff---------')
+            print(coff[0,:4])
+            print('----------input------')
+            print(xnorm[0,:])
+            print('-----------FF max,min------------------')
+            print(ffmax)
+            print(ffmin)
+            # print(eesqr.shape)#3,1
+            # print(ffmax.shape)#3
+
+            # assert(False)
+            print(ffmax.shape)#3
+            print(fmax.shape)#1,3
+
+
+            # print('-----------verify F ratio--------------------')和FF完全一致
+            # print((np.sum(coff[0,:4]*xraw[0,:4])+xraw[0,4]+xraw[0,5]-(fmin.T)[:,0] [0])/((fmax.T)[:,0][0]-(fmin.T)[:,0][0]))
+            # print((np.sum(coff[1,:4]*xraw[1,:4])+xraw[1,4]+xraw[1,5]-(fmin.T)[:,0] [1])/((fmax.T)[:,0][1]-(fmin.T)[:,0][1]))
+            # print((np.sum(coff[2,:4]*xraw[2,:4])+xraw[2,4]+xraw[2,5]-(fmin.T)[:,0] [2])/((fmax.T)[:,0][2]-(fmin.T)[:,0][2]))
+
+            print('-----------verify FF ratio--------------------')
+            print((np.sum(coff[0,:4]*xnorm[0,:4])+xnorm[0,4]+xnorm[0,5]-ffmin[0])/(ffmax[0]-ffmin[0]))
+            if(prm_3dim):
+                print((np.sum(coff[1,:4]*xnorm[1,:4])+xnorm[1,4]+xnorm[1,5]-ffmin[1])/(ffmax[1]-ffmin[1]))
+                print((np.sum(coff[2,:4]*xnorm[2,:4])+xnorm[2,4]+xnorm[2,5]-ffmin[2])/(ffmax[2]-ffmin[2]))
+            print('[need F ratio]\t'+str(fratio))
+            print('[need F]\t'+str(needf))
+            print('f\t'+str(fnext))
+            fnorm=np.sqrt(np.sum(fnext**2))
+            print('f norm\t'+str(fnorm))
+            print('f need\t'+str(needf))
+
+            print('fmax\t'+str(fmax))
+            print('fmin\t'+str(fmin))
+            self.afmax.append(fmax)
+            self.afmin.append(fmin)
+
+            if(prm_3dim):
+                fratioactual=(fnext-fmin)/(fmax-fmin)
+            else:
+                fratioactual=(fnorm-fmin)/(fmax-fmin)
+
+            print('F ratio\t'+str(fratioactual))
+            self.afratioactual.append(fratioactual)
+
+            print('[need E ratio]\t'+str(ratio0))
+            self.aeratio.append(ratio0)
+
+            print('[need E]\t'+str(neede))
+            # print('[verify tune]:'+str((eesqr-ffmin[:,np.newaxis])/(ffmax[:,np.newaxis]-ffmin[:,np.newaxis])))
+            
+            self.aemin.append(mine)
+            self.aemax.append(maxe)
+        
+            gammahat2=(energynext-mine)/(maxe-mine)
+            print('[gamma hat2]\t'+str(gammahat2))
+            self.agammahat2.append(gammahat2)
+
+        energymin=np.min(energynexts)
+        energymax=np.max(energynexts)
+        gammahat= (energynext-energymin)/(energymax-energymin)
+        print('next single E max\t'+str(energymax))
+        print('next single E min\t'+str(energymin))
+        print('final choose s E\t'+str(energynext))
+
+        
+   
+
+
+     
+        # f2min=np.amax(fmin**2,fmax**2,axis=1)
+        # f2max=np.amin(fmin**2,fmax**2,axis=1)
+
+        # print('F2 ratio\t'+str((fnext**2-f2min)/(f2max-f2min)))
+
+
+
+        if(prm_linear):
+            print('[gamma]\t'+str(tune))
+            self.agamma.append(tune)
+            
+            print('[gamma hat]\t'+str(gammahat))
+
+
+            self.agammahat.append(gammahat)
+
+            self.aenergymax.append(energymax)
+            self.aenergymin.append(energymin)
+            self.aenergypre.append(energynext)
+
+
+
+        
+        # print(pos_correction.shape)#partnum 3
+        # print((self.gravity_vec*dt_frame/2).shape)#3
+        # print((pos_correction/dt_frame+ _vel + self.gravity_vec*dt_frame/2).shape)#partnum 3
 
         # print('[vel mean]')
         # print(np.mean(_pos_correction1))
@@ -653,9 +1345,10 @@ class MyParticleNetwork(tf.keras.Model):
 
         _vel=vel    #is numpy
         partnum=pos.shape[0]
-        energy=np.sum(getEnergy(vel=_vel))/partnum
-        self.aenergy.append(energy)
-        print('[energy]\t'+str(energy))
+        if(not prm_train):
+            energy=getEnergy(vel=_vel,mask=self.mask,partnum=partnum)
+            self.aenergy.append(energy)
+            print('[energy]\t'+str(energy))
 
 
         #testterm toomuch
@@ -670,17 +1363,19 @@ class MyParticleNetwork(tf.keras.Model):
         pos_correction = self.compute_correction(
             pos2, vel2, feats, box, box_feats, fixed_radius_search_hash_table)
         
-        self.adelta_energy.append(np.sum(getDeltaEnergy(v=vel2,dv=pos_correction/self.timestep))/partnum)
-        print('[delta Energy]')
-        print(self.adelta_energy[-1])
-        gravity_mat=np.tile(np.array([0,-9.81,0]),(partnum,1))
-        self.adelta_energy2.append(np.sum(getDeltaEnergy2(
-                    dt=self.timestep,
-                    dx=pos_correction,
-                    v=vel,
-                    g=gravity_mat)
-                )/partnum)
-        print(self.adelta_energy2[-1])
+        # self.adelta_energy.append(np.sum(getDeltaEnergy(v=vel2,dv=pos_correction/self.timestep))/partnum)
+        # print('[delta Energy]')
+        # print(self.adelta_energy[-1])
+
+        if(not prm_train):
+            gravity_mat=np.tile(np.array([0,-9.81,0]),(partnum,1))
+        # self.adelta_energy2.append(np.sum(getDeltaEnergy2(
+        #             dt=self.timestep,
+        #             dx=pos_correction,
+        #             v=vel,
+        #             g=gravity_mat)
+        #         )/partnum)
+        # print(self.adelta_energy2[-1])
     
 
 

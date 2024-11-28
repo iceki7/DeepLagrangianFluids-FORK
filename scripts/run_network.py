@@ -10,6 +10,8 @@ import importlib
 import json
 import time
 import hashlib
+import util
+import getpartEmit
 from tqdm import tqdm
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'datasets'))
 from physics_data_helper import numpy_from_bgeo, write_bgeo_from_numpy
@@ -19,15 +21,66 @@ from write_ply import write_ply
 np.random.seed(1234)
 
 
+boarddis=0
+startstep=0
+tempdone=False
+
 
 prm_wallmove=1
 prm_motion='still'
+prm_motion='error'
 
 
-prm_maxenergy=1
+
+prm_maxenergy=0
+prm_exactarg=0
+
 prm_pointwise=0
+prm_linear=0
+
+
+
+prm_mlpexact=0
+prm_mlpexact_2=0
+prm_needratio=      True
+prm_energyratio=    True
+ratio0=0.5
+prm_3dim=           False
+prm_customtune=0
+
+
+prm_sus=0
 prm_area=0
+
+
+prm_continuerun=1
+prm_simrigidwithoutfluid=1
+# 在continuerun的情况下，运行之前的帧，但是不模拟液体
+
+prm_resumestep=1000
+#从这一帧开始续上
+
+if(prm_continuerun):
+    startstep=prm_resumestep-1
+    if(prm_simrigidwithoutfluid):
+        startstep=0
+
+
+prmsimplebc=0
+prmcutbox=0
+
+
+
+
+
+#在统计信息中过滤掉出界的粒子
 prm_mask=0
+
+#自行设置emit，忽略json里的
+prm_myemit=1
+
+prm_edit=0
+
 prm_savelvel=0
 
 
@@ -41,7 +94,14 @@ prm_round=0
 
 
 prm_only_test_vel=0
+
+prm_moveOutPart=0
 prm_exportgap=1
+# prm_exportgap=1000000
+prmexportrig=1
+prmexportallrigidperframe=0
+
+
 
 export_num=0
 scenejsonname="error"
@@ -109,6 +169,8 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
         model3 = trainscript_module.create_model()
         model3.init()
         model3.load_weights("pretrained_model_weights.h5", by_name=True)
+        # model3.load_weights("stabledf.h5", by_name=True)
+
         #prm_
 
         model4 = trainscript_module.create_model()
@@ -120,6 +182,15 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
         # mname=['csm_df300_1111','csm_mp300','pretrained_model_weights','csm300_1111']
         # print('[layer TF]')
         # print(model.summary())
+        # print('[trainable]')
+        # print(len(model.trainable_variables))#18
+        # for i in model.trainable_variables:#list
+        #     print(i.shape)
+        #     print(i.name)
+        #     print(type(i))
+        # assert(False)
+        
+
         # for idx,m in enumerate([model,model2,model3,model4]):
         #     layerid=0
         #     for layer in tqdm(m.layers):
@@ -144,7 +215,7 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
 
 
     print('./cache/'+scenejsonname+'-f.npy')
-    if not os.path.exists('./cache/'+scenejsonname+'-f.npy'):#know
+    if not os.path.exists('./cache/'+scenejsonname+'-box.npy'):#know
         print('[no scene ply cache]') 
 
         # prepare static particles
@@ -154,7 +225,11 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
 
         print('-------wall------')
         for x in scene['walls']:
-            points, normals = obj_surface_to_particles(x['path'])
+            print('sampling \t'+str(x['path']))
+            if(not 'scale' in x):
+                points, normals=obj_surface_to_particles(x['path'])
+            else:
+                points, normals = obj_surface_to_particles(x['path'],scalefactor=x['scale'])
             if 'invert_normals' in x and x['invert_normals']:
                 normals = -normals
                 print('[invert normal]')
@@ -177,17 +252,20 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
 
         # prepare fluids
         fluids = []
-        for x in scene['fluids']:
-            points = obj_volume_to_particles(x['path'])[0]
-            points += np.asarray([x['translation']], dtype=np.float32)
-            velocities = np.empty_like(points)
-            velocities[:, 0] = x['velocity'][0]
-            velocities[:, 1] = x['velocity'][1]
-            velocities[:, 2] = x['velocity'][2]
-            range_ = range(x['start'], x['stop'], x['step'])
-            fluids.append((points, velocities, range_))
-            #zxc
-        np.save('./cache/'+scenejsonname+"-f",fluids)
+
+
+        if(not prm_myemit):
+            for x in scene['fluids']:
+                points = obj_volume_to_particles(x['path'])[0]
+                points += np.asarray([x['translation']], dtype=np.float32)
+                velocities = np.empty_like(points)
+                velocities[:, 0] = x['velocity'][0]
+                velocities[:, 1] = x['velocity'][1]
+                velocities[:, 2] = x['velocity'][2]
+                range_ = range(x['start'], x['stop'], x['step'])
+                fluids.append((points, velocities, range_))
+                #zxc
+                np.save('./cache/'+scenejsonname+"-f",fluids)
         np.save('./cache/'+scenejsonname+"-box",box)
         np.save('./cache/'+scenejsonname+"-boxn",box_normals)
         np.save('./cache/'+scenejsonname+"-wallinfo",wallinfo)
@@ -195,27 +273,452 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
     else:
         print('[use cache]')
         # assert(False)
-        fluids=     np.load('./cache/'+scenejsonname+"-f.npy",allow_pickle=True)
+        if(not prm_myemit):
+            fluids=     np.load('./cache/'+scenejsonname+"-f.npy",allow_pickle=True)
         box=        np.load('./cache/'+scenejsonname+"-box.npy",allow_pickle=True)
         box_normals=np.load('./cache/'+scenejsonname+"-boxn.npy",allow_pickle=True)
         wallinfo=   np.load('./cache/'+scenejsonname+"-wallinfo.npy",allow_pickle=True)
+        print(wallinfo)
+        # assert(False)
+
+        #test 2.5m
+        # print(box.shape)
+        # print(fluids.shape)#1 3
+        # print(fluids[0,0])
+        # print(fluids[0,1])
+        # print(fluids[0,2])
+        # random_array = np.random.rand(300000, 3)
+        # #这里导入30w不行
+
+        # # random_array = np.random.rand(600000, 3)
+
+
+        
+        # fluids[0,0]=random_array
+        # del random_array
+        # fluids[0,1]=np.zeros_like(fluids[0,0])
+
+
+
+    
+    if(prm_myemit):
+
+        from getlattice import generate_cube_points
+
+        # myemit
+        # points_emit=generate_cube_points(
+        #     center=[-16.4,-3.4,0.0],
+        #     length=0,
+        #     height=5.44,
+        #     width=1.25,
+        #     spacing=0.05
+        # )
+        #slope
+        # points_emit=generate_cube_points(
+        #     center=[-16.4,-3.4+2,0.0],
+        #     length=0,
+        #     height=5.44,
+        #     width=1.25,
+        #     spacing=0.05
+        # )
+
+
+        # slope move 
+        # points_emit=generate_cube_points(
+        #     center=[-16.4-2.3,-3.4+2,0.0],
+        #     length=0,
+        #     height=5.44,
+        #     width=1.25,
+        #     spacing=0.05
+        # )
+
+
+        # slope movex+
+        # points_emit=generate_cube_points(
+        #     center=[-16.4-4,-3.4+2,0.0],
+        #     length=0,
+        #     height=5.44,
+        #     width=1.25,
+        #     spacing=0.05
+        # )
+        # vel_emit=np.zeros_like(points_emit)
+        # vel_emit[:,0]=4.5
+        # vel_emit[:,1]=-1.5
+
+
+        # vel_emit[:,0]=3.125
+        # vel_emit[:,1]=-1.2
+
+
+        # vel_emit[:,0]=4
+        # vel_emit[:,1]=-1.5
+
+
+        range_=range(0, 170, 1)
+        #prm_
+
+
+
+    
+        # --------------test max num- 测试最大承载粒子数----------------------------------------
+        range_=range(0, 1, 1)
+
+        #90w board
+        # points_emit=generate_cube_points(
+        #     center=[-16.4-4,-3.4+2,0.0],
+        #     length=0,
+        #     height=38.44,
+        #     width=60.25,
+        #     spacing=0.05
+        # )
+        if(scenejsonname=='maxpartnum.json'):
+            #90w block, 187w
+            points_emit=generate_cube_points(
+                    center=[0,-3,0],
+                    length=2.5,
+                    height=2.5,
+                    width=18,
+                    spacing=0.05
+                )
+            vel_emit=np.zeros_like(points_emit)
+            print(points_emit.dtype)#float32
+
+
+
+
+
+        # center=[0,-0.5,0],
+        # high fluid 这一组数据不转float64
+        # 80w
+        # points_emit=generate_cube_points(
+        #     center=[-5,-0.5,-5],
+        #     length=2.5,
+        #     height=2.5,
+        #     width=16,
+        #     spacing=0.05
+        # )
+
+        # global scenejsonname
+
+
+
+        if(scenejsonname=='high_fluid_mcvsph-fluid.json'):
+            # 50w highFluid
+            center=[0,-0.5,0]
+            # high fluid 这一组数据不转float64
+            points_emit=generate_cube_points(
+                center=[-5,-3,-5],
+                length=2.5,
+                height=2.5,
+                width=10,
+                spacing=0.05
+            )
+            box[:,0]-=5
+            box[:,2]-=5
+            points_emit=points_emit.astype(np.float16)
+            vel_emit=np.zeros_like(points_emit)
+
+     
+
+
+
+        # points_emit=np.load("./tempInitScene-70w.npz")['mat1']
+
+
+        #这个数据不能直接送入，内存会炸，必须赋值到一个numpy数组中
+        # data=np.load("./tempInitScene-70w.npy")
+        # points_emit=data
+        # print(points_emit.dtype)#float64
+
+
+
+        # # points_emit=np.load("./tempInitScene-40w.npy")
+        # vel_emit=0
+        # tempcnt=0
+        # maxv=0
+        # minv=0
+        # print(np.max(data[:,0]))
+        # print(np.max(data[:,1]))
+        # print(np.max(data[:,2]))
+        # print(np.min(data[:,0]))
+        # print(np.min(data[:,1]))
+        # print(np.min(data[:,2]))
+        # # points_emit=np.zeros_like(points_emit)
+        # for index, value in np.ndenumerate(data):
+        #     tempcnt+=1
+        #     # if(tempcnt<100):
+        #     #     print(index)
+        #     dim0=index[0]
+        #     dim1=index[1]
+        #     points_emit[dim0,dim1]=data[dim0,dim1]
+        # print(tempcnt)
+        # vel_emit=np.zeros_like(points_emit)
+
+
+        # from get1ply import get1ply
+        # points_emit=get1ply("./tempInitScene0000.ply")
+
+
+
+        if(scenejsonname=='rotating_panel.json'):
+            scale=2  #与scale=1的box配合使用
+
+            scale*=1.5
+
+            points_emit,vel_emit, range_ =getpartEmit.get_partemit_rotatingpanel(scale=scale)
+
+        if(scenejsonname=='streammultiobjs.json'):
+            points_emit,vel_emit, range_ =getpartEmit.get_partemit_streammultiobjs()
+
+        if(scenejsonname=='streammultiobjs2x.json' or scenejsonname=='streammultiobjs2xCut.json'):
+            points_emit,vel_emit, range_ =getpartEmit.get_partemit_streammultiobjs(scale=2)
+        elif(scenejsonname=='streammultiobjs3x.json'):
+            points_emit,vel_emit, range_ =getpartEmit.get_partemit_streammultiobjs(scale=3)
+        elif(scenejsonname=='streammultiobjsHorizon.json'):
+            points_emit,vel_emit, range_ =getpartEmit.get_partemit_streammultiobjsHorizon(scale=2)
+
+
+        if(scenejsonname=='watervessel.json'):
+            points_emit,vel_emit, range_ =getpartEmit.get_partemit_watervessel(scale=2)
+
+        if(scenejsonname=='wavetower.json'):
+            points_emit,vel_emit, range_ =getpartEmit.get_partemit_wavetower(scale=2)
+
+
+        if(scenejsonname=='wavetowerstatic.json'):
+            points_emit,vel_emit, range_ =getpartEmit.get_partemit_wavetowerstatic()
+
+        if(scenejsonname=='propeller.json'):
+            points_emit,vel_emit, range_ =getpartEmit.get_partemit_propeller()
+
+        if(scenejsonname=='propellerlarge.json'):
+            points_emit,vel_emit, range_ =getpartEmit.get_partemit_propellerlarge()
+
+        if(scenejsonname=='propeller2large.json'):
+            points_emit,vel_emit, range_ =getpartEmit.get_partemit_propellerlarge()
+        
+        if(scenejsonname=='propeller2large2.json'):
+            points_emit,vel_emit, range_ =getpartEmit.get_partemit_propellerlarge2()
+        if(scenejsonname=='taylorvortex.json' or scenejsonname=='rotatingpanelstatic.json'):
+            points_emit,vel_emit, range_ =getpartEmit.get_partemit_taylorvortex()
+
+        if(scenejsonname=='taylorvortex1.5scale.json'):
+            points_emit,vel_emit, range_ =getpartEmit.get_partemit_taylorvortex(scale=1.5)
+     
+
+        print(points_emit.shape)
+
+        # points_emit=points_emit.astype(np.float64)
+        print(points_emit.dtype)
+
+
+        print(points_emit[5:,:])
+        # import sys
+        # from pympler import asizeof
+        print(sys.getsizeof(points_emit))
+        # assert(False)
+        # import os
+        import resource
+        
+        # 获取当前进程的PID
+        pid = os.getpid()
+        
+        # 获取当前进程的内存使用情况（以KB为单位）
+        memory_usage_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        
+        print(f"当前Python程序占用内存: {memory_usage_kb} KB")
+        # print(asizeof.asizeof(points_emit))
+
+        # assert(False)
+        
+        # assert(False)
+       
+
+        # points_emit=points_emit[:700000,:]
+        # points_emit2=points_emit.copy()
+        # del points_emit
+        # points_emit=points_emit2
+        #直接截断700000不够用
+        #加上边界：800000 OK
+        
+
+        print('[custom init fluid sp]')
+        # print(points_emit.shape)
+
+
+        # box=box[:1,:]
+        # box_normals=box_normals[:1,:]
+        # test max num---------------------------------------------------------------------------
+
+
+
+
+
+
+        
+
+
+
+        fluids=[]
+        for x in scene['fluids']:
+            # points = obj_volume_to_particles(x['path'])[0]
+            # points += np.asarray([x['translation']], dtype=np.float32)
+            # velocities = np.empty_like(points)
+            # velocities[:, 0] = x['velocity'][0]
+            # velocities[:, 1] = x['velocity'][1]
+            # velocities[:, 2] = x['velocity'][2]
+
+            
+            fluids.append((points_emit,vel_emit,range_))
+            # assert(False)
+            # print('this method')
+
+                #zxc
+
+    max_y = np.max(box[:, 1]) 
+    min_y = np.min(box[:, 1]) #- 0.05 * (np.max(box[:, 1]) - np.min(box[:, 1]))
+    max_z = np.max(box[:, 2])
+    min_z = np.min(box[:, 2])
+
+    max_x = np.max(box[:, 0])
+    min_x = np.min(box[:, 0])
+
+
+    # box=box[:1,:]
+
+    if(prmcutbox):
+        print('CUT BOX')
+        if(scenejsonname=="wavetowerstatic.json"):
+            mask=box[:wallinfo[0][0]:,1] < 2
+     
+        elif(scenejsonname=="propeller.json"):
+            mask=box[:wallinfo[0][0]:,1] < 0.97
+        elif(scenejsonname=="streammultiobjs3x.json"):
+            mask=box[:wallinfo[0][0]:,1] < 4.5
+        else:
+            assert(False)
+            
+
+        filterednum=np.sum(mask.astype(int))
+        print(mask.shape)#partnum 1
+        print('after filter:\t'+str(filterednum))
+        box0=box                [:wallinfo[0][0],:]
+        box_normals0=box_normals[:wallinfo[0][0],:]
+        box0=                box0[mask]
+        box_normals0=box_normals0[mask]
+        box=        np.concatenate([box0,        box        [wallinfo[0][0]:,:]])
+        box_normals=np.concatenate([box_normals0,box_normals[wallinfo[0][0]:,:]])
+
+        print(box.shape)
+        print(box_normals.shape)
+
+      
+        wallinfo[0]=[filterednum,3]
+
+        # assert(False)
+        # mask=mask[:,0]
+        
+        # box[:wallinfo[0][0]:,:] = 
+    # box_normals=box_normals[wallinfo[0][0]:,:]
+
+    # mask=box[:,1] < -10
+    # box=box[mask]
+    # box_normals=box_normals[mask]
+    # box=np.array([0.0, 0.0, 0.0])
+    # box_normals=np.array([1.0, 0.0, 0.0])
+    # box=util.ensure_2d(box).T
+    # box_normals=util.ensure_2d(box_normals).T
+    # min_x=0
+    # min_y=0
+    # min_z=0
+    # max_x=6
+    # max_y=6
+    # max_z=6
+    
+
+
+
+    print('[box sp]')
+    print(box.shape)
+    if(prm_myemit):
+        print('[total num]')
+        print(box.shape[0]+points_emit.shape[0])
+    print(min_y)
+    
+
+
 
     pos = np.empty(shape=(0, 3), dtype=np.float32)
     vel = np.empty_like(pos)
+    if(prm_continuerun):
+        print('[CONTINUE RUN]')
+        from get1ply import get1ply
+        pos1= get1ply(os.path.join(output_dir,'fluid_{0:04d}.ply'.format(prm_resumestep-2)))
+        pos2=get1ply(os.path.join(output_dir,'fluid_{0:04d}.ply'.format(prm_resumestep-1)))
+        vel=(pos2-pos1)/0.016
+        pos=pos2
+        print(pos.shape)
+        print(vel.shape)
+        print(np.min(pos[:,0]))
+        print(np.min(pos[:,1]))
+        print(np.min(pos[:,2]))
+        print(np.max(pos[:,0]))
+        print(np.max(pos[:,1]))
+        print(np.max(pos[:,2]))
+        print(np.mean(vel))
+
+
+
+
     starttime=time.time()
     if(prm_round):
         points=    np.round(points,    eps)
         velocities=np.round(velocities,eps)
-    for step in tqdm(range(num_steps)):
+
+    if(not prm_continuerun):
+        write_ply(
+                    path=output_dir+'/box',
+                    frame_num=1,
+                    dim=3,
+                    num=box.shape[0],
+                    pos=box)
+
+    for step in tqdm(range(startstep,num_steps)):
         # print('[num_steps]')
         # print(num_steps)
         # time.sleep(3000)
         # add from fluids to pos vel arrays
+        # import tensorflow as tf
+        # tf.reset_default_graph()
+        # tf.keras.backend.clear_session()
         for points, velocities, range_ in fluids:
-            if step in range_:  # check if we have to add the fluid at this point in time
+        # for    points_emit,vel_emit,range_ in fluids:
+            if (step in range_ and not prm_continuerun):  # check if we have to add the fluid at this point in time
+                
+                print(type(pos))#eagerTensor
+                print('------tp pos---------')
                 pos = np.concatenate([pos, points], axis=0)#know
+                # del fluids
+                # del points_emit
+                # del vel_emit
+                # del points
+                # import gc
+                # gc.collect()
+                # print(type(pos))
                 vel = np.concatenate([vel, velocities], axis=0)
+                # del vel
+                
+                
+                # import tensorflow as tf
+                # vel = tf.zeros_like(pos)
+                # vel=tf.cast(vel,tf.float32)
+        # 这里才是增长粒子的一般方式
 
+
+        #wrong
+        # if(step==2):
+        #     pos=np.random.rand(500000, 3)
+        #     vel=np.zeros_like(pos)
 
         #testterm y0
         # if(step<=30 and step>=1):
@@ -233,7 +736,7 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
                 fluid_output_path = os.path.join(output_dir,
                                     'fluid_{0:04d}'.format(export_num))
                 
-            
+
             if(prm_outputInitScene):
                 if(step!=0):
                     exit(0)
@@ -247,34 +750,39 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
                     dim=3,
                     num=box.shape[0],
                     pos=box)
-                write_ply(
-                    path="./temp/boxn-",
-                    frame_num=1,
+                # write_ply(
+                #     path="./temp/boxn-",
+                #     frame_num=1,
 
-                    dim=3,
-                    num=box_normals.shape[0],
-                    pos=box_normals)
-                write_ply(
-                    path="./temp/fluid-pos",
-                    frame_num=1,
-                    dim=3,
-                    num=pos.shape[0],
-                    pos=pos)
-                write_ply(
-                    path="./temp/fluid-vel",
-                    frame_num=1,
+                #     dim=3,
+                #     num=box_normals.shape[0],
+                #     pos=box_normals)
+                # write_ply(
+                #     path="./temp/fluid-pos",
+                #     frame_num=1,
+                #     dim=3,
+                #     num=pos.shape[0],
+                #     pos=pos)
+                # write_ply(
+                #     path="./temp/fluid-vel",
+                #     frame_num=1,
 
-                    dim=3,
-                    num=vel.shape[0],
-                    pos=vel)
+                #     dim=3,
+                #     num=vel.shape[0],
+                #     pos=vel)
 
-                np.save("./sp/Box",box)
-                np.save("./sp/POS",pos)
-                np.save("./sp/VEL",vel)
+                # np.save("./sp/Box",box)
+                # np.save("./sp/POS",pos)
+                # np.save("./sp/VEL",vel)
 
 
-            if(prm_only_test_vel==0 and step%prm_exportgap==0):
+            if(prm_only_test_vel==0 and step%prm_exportgap==0 and\
+            (not( prm_continuerun and step==prm_resumestep-1)) and\
+            (not( prm_continuerun and step<prm_resumestep))
+            ):
                 if isinstance(pos, np.ndarray):
+                    # 先记录数据，再推理
+                    
                     write_particles(fluid_output_path, pos, vel, options)
                     export_num+=1
                 else:
@@ -298,21 +806,258 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
             # box_normals=np.random.rand(*box_normals.shape)
 
 
+            #强制在每次推理都使用tensor
+            if(isinstance(pos,np.ndarray)):
+                pass
+                # import tensorflow as tf
+                # post=tf.convert_to_tensor(pos)
+                # velt=tf.convert_to_tensor(vel)
+                # post=tf.cast(post,tf.float32)
+                # velt=tf.cast(velt,tf.float32)
 
-                    
-            inputs = (pos, vel, None, box, box_normals)
+                # del pos
+                # del vel
 
+                # inputs = (post, velt, None, box, box_normals)
+                inputs = (pos, vel, None, box, box_normals)
+
+
+
+            else:
+                # import tensorflow as tf
+                # global tempdone
+                # if(tempdone==False):
+                #     pos=tf.random.uniform(shape=[500000, 3], minval=0, maxval=1, dtype=tf.float32) 
+                #     vel=tf.zeros_like(pos)
+                #     tempdone=True
+                inputs = (pos, vel, None, box, box_normals)
+
+            import tensorflow as tf
+            # global scenejsonname
             if(prm_wallmove):
-                #需要移动的wall是第1个
-                from movewall_strategy import movewall_still
+                
+                #规定：需要移动的wall恰好是第1个
+                from movewall_strategy import movewall_still,rotationself,boatdown,moverigid
                 wallmoveidx=wallinfo[0][0]
+                
                 if(prm_motion=='0602'):     
                     pass
                 elif(prm_motion=='still'):
-                    # movewall_still (step=step,wallmoveidx=wallmoveidx,box=box)
                     movewall_still(step=step,wallmoveidx=wallmoveidx,box=box)
-                   
+                elif(scenejsonname=='example_propeller.json'):
+                    assert(False)
+                    rotationself(wallmoveidx=wallmoveidx,\
+                                box=box)
+                elif(scenejsonname=='rotating_panel.json'):
+                    scale=1.5
+                    if(step<120):
+                        pass
+                    elif(step<=1000):
+                        # print(np.mean(box[wallmoveidx:,0]))
+                        # print(np.mean(box[wallmoveidx:,1]))
+                        # print(np.mean(box[wallmoveidx:,2]))
+                        # assert(False)
+                        rotationself(wallmoveidx=wallmoveidx,\
+                                    box=box,center=tf.constant([3.6,2.0,3.5])*scale,
+                                    vel=1.0/120.0)
+                    elif(step<=1500):
+                        box[wallmoveidx:,1]+=0.1*scale
+                elif(scenejsonname=='watervessel.json'):
+                    
+                    scale=2.0
 
+
+                    if(scale==2.0):
+                        waittime=100
+                        downtime=40
+
+
+                    if(step>waittime and step<=downtime+waittime):
+                        boatdown(wallmoveidx,box)
+                    else:
+                        rotationself(wallmoveidx,box,center=tf.constant([3.0,0.0,3.0])*scale,vel=-1.0/40.0)
+
+                elif(scenejsonname=='wavetower.json'):
+                    boardpartnum=wallinfo[1][0]
+
+                    # pass                  
+                    if((step%400)<=400/2):
+                        #board
+                        moverigid(wallmoveidx,boardpartnum,box,direct=-1.0)
+                    else:
+                        moverigid(wallmoveidx,boardpartnum,box)
+
+
+
+                elif(scenejsonname=='wavetowerstatic.json'):
+                    movetime=150
+                    waittime=170
+                    pushperiod=700
+                    wallmoveidx=wallinfo[1][0]+wallinfo[0][0]
+                    towerpartnum=wallinfo[2][0]
+
+                    # print(wallinfo)
+                    # assert(False)
+
+                    if(step<=movetime):
+                        moverigid(wallmoveidx,towerpartnum,box,speed=-0.74/movetime,axis=1)
+                    elif(step<=movetime+waittime):
+                        pass
+                    else:
+                        from movewall_strategy import movesin
+                        wallmoveidx=wallinfo[0][0]
+                        boardpartnum=wallinfo[1][0]
+                        global boarddis
+                        boarddis+=movesin(wallmoveidx,boardpartnum,box,(step-movetime-waittime+1),\
+                        maxdis=4,funcperiod=pushperiod)
+                        print('dis---')
+                        print(boarddis)
+
+
+
+                elif(scenejsonname=='propeller.json'):
+                    wallmoveidx=wallinfo[0][0]
+                    proppartnum=wallinfo[1][0]
+                    movetime=250
+                    waittime=100
+
+
+                    if(step<=movetime):
+                        moverigid(wallmoveidx,proppartnum,box,speed=-1.8/movetime,axis=1)
+                    elif(step<=movetime+waittime):
+                        pass
+                    else:
+                        rotationself(wallmoveidx=wallmoveidx,\
+                                    box=box,center=tf.constant([0.0,0.0,0.0]),
+                                    vel=1.0/120.0,axis=0)
+
+
+                elif(scenejsonname=='propellerlarge.json'):
+                    wallmoveidx=wallinfo[0][0]
+                    proppartnum=wallinfo[1][0]
+                    movetime=250
+                    waittime=100
+
+
+                    if(step<=movetime):
+                        moverigid(wallmoveidx,proppartnum,box,speed=-1.7/movetime,axis=1)
+                    elif(step<=movetime+waittime):
+                        pass
+                    else:
+                        rotationself(wallmoveidx=wallmoveidx,\
+                                    box=box,center=tf.constant([0.0,-0.7,0.0]),
+                                    vel=1.0/120.0,axis=0)
+                
+                elif(scenejsonname=='propeller2large.json'):
+                    wallmoveidx=wallinfo[0][0]
+                    proppartnum=wallinfo[1][0]
+                    movetime=250
+                    waittime=100
+
+
+                    if(step<=movetime):
+                        moverigid(wallmoveidx,proppartnum,box,speed=-0.6/movetime,axis=1)
+                    elif(step<=movetime+waittime):
+                        pass
+                    else:
+                        rotationself(wallmoveidx=wallmoveidx,\
+                                    box=box,center=tf.constant([0.0,-0.2,0.0]),
+                                    vel=-1.0/120.0,axis=1)
+
+                elif(scenejsonname=='propeller2large2.json'):
+                        wallmoveidx=wallinfo[0][0]
+                        proppartnum=wallinfo[1][0]
+                        movetime=100
+                        waittime=10
+
+
+                        if(step<=movetime):
+                            moverigid(wallmoveidx,proppartnum,box,speed=-0.6/movetime,axis=1)
+                        elif(step<=movetime+waittime):
+                            pass
+                        else:
+                            rotationself(wallmoveidx=wallmoveidx,\
+                                        box=box,center=tf.constant([0.0,-0.2,0.0]),
+                                        vel=-1.0/120.0,axis=1)
+                            
+                elif(scenejsonname=='taylorvortex.json'or scenejsonname=='taylorvortex1.5scale.json'):
+                    wallmoveidx=wallinfo[0][0]
+                    proppartnum=wallinfo[1][0]
+                    movetime=100
+                    waittime=10
+
+                    boxscale=1.0
+                    if(scenejsonname=='taylorvortex1.5scale.json'):
+                        boxscale=1.5
+                        # assert(False)
+                    
+
+
+                    if(step<=movetime):
+                        moverigid(wallmoveidx,proppartnum*4,box,speed=-0.6*boxscale/movetime,axis=1)
+                    elif(step<=movetime+waittime):
+                        pass
+                    else:
+                        rotscale=1.5
+                        rotationself(wallmoveidx=wallmoveidx,\
+                                    box=box,center=tf.constant([0.0,-0.2,0.0])*boxscale,
+                                    vel=-1.0*rotscale/120.0,axis=1,partnum=proppartnum)
+                        rotationself(wallmoveidx=wallmoveidx+proppartnum,\
+                                        box=box,center=tf.constant([-2.0,-0.2,2.43])*boxscale,
+                                        vel=-1.0*rotscale/120.0,axis=1,partnum=proppartnum)
+                        rotationself(wallmoveidx=wallmoveidx+2*proppartnum,\
+                                        box=box,center=tf.constant([0.0,-0.2,2.43])*boxscale,
+                                        vel=1.0*rotscale/120.0,axis=1,partnum=proppartnum)
+                        rotationself(wallmoveidx=wallmoveidx+3*proppartnum,\
+                                        box=box,center=tf.constant([-2.0,-0.2,0.0])*boxscale,
+                                        vel=1.0*rotscale/120.0,axis=1,partnum=proppartnum)
+
+
+
+
+
+
+                elif(scenejsonname=='rotatingpanelstatic.json'):
+                    wallmoveidx=wallinfo[0][0]
+                    proppartnum=wallinfo[1][0]
+                    movetime=50
+                    waittime=10
+
+
+                    if(step<=movetime):
+                        moverigid(wallmoveidx,proppartnum*4,box,speed=-(0.3+0.2)/movetime,axis=1)
+                    elif(step<=movetime+waittime):
+                        pass
+                    else:
+                        rotscale=1.5
+                        centx=np.mean(box[wallmoveidx:,0])
+                        centy=np.mean(box[wallmoveidx:,1])
+                        centz=np.mean(box[wallmoveidx:,2])
+
+                        print(centx)
+                        print(centy)
+                        print(centz)
+
+     
+
+                        rotationself(wallmoveidx=wallmoveidx,\
+                                    box=box,center=tf.constant([-1.0398,0.1935,1.1020]),
+                                    vel=-1.0*rotscale/120.0,axis=1,partnum=proppartnum)
+
+
+
+
+
+
+
+                # np.save(output_dir+"/rigid_"+str(step),box[wallmoveidx:])
+                if(prmexportrig):
+                    if(prmexportallrigidperframe):
+                        pcd = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(box))
+                    else:
+                        pcd = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(box[wallmoveidx:]))
+
+                    o3d.io.write_point_cloud(output_dir+"/rigid_"+str(step)+ '_.ply', pcd)
 
       
 
@@ -321,18 +1066,30 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
                 pos=np.round(pos,eps)
                 vel=np.round(vel,eps)
             if(prm_mix):
-                pos, vel = model.call2(model2=model2,
-                                       model3=model3,
-                                       model4=model4, 
-                                       inputs=inputs,
-                                       step=step,
-                                       num_steps=num_steps)
-                
+                if((not prm_continuerun ) or\
+                 (step>=prm_resumestep-1)):
+                    pos, vel = model.call2(model2=model2,
+                                        model3=model3,
+                                        model4=model4, 
+                                        inputs=inputs,
+                                        step=step,
+                                        num_steps=num_steps)
+    
               
             else:
                 # print('[pretype inputs]')
                 # print(type(inputs[1]))#tensor
-                pos, vel = model(inputs)#numpy
+
+                                    
+                # with tf.GradientTape() as tape:
+                #     grads = tape.gradient(total_loss, model.trainable_variables)
+                #     optimizer.apply_gradients(zip(grads, model.trainable_variables))
+                # # print(model.)
+
+
+                if((not prm_continuerun ) or\
+                 (step>=prm_resumestep-1)):
+                    pos, vel = model(inputs)#numpy
                 if(prm_round):
                     pos=np.round(pos,eps)
                     vel=np.round(vel,eps)
@@ -342,27 +1099,161 @@ def run_sim_tf(trainscript_module, weights_path, scene, num_steps, output_dir,
         
         #zxc 或许不要更好
         # remove out of bounds particles
-        if step % 10 == 0:
+
+        if(prmsimplebc):        
+            from simplebc import simplebc
+            pos,vel=simplebc(pos,vel,min_x,min_y,min_z,max_x,max_y,max_z)
+    
+            vel=util.clearNan(vel)
+
+
+        if step % 1 == 0:
             #prm_
+
+            from tensorflow import logical_and,logical_not,where,expand_dims,tile,convert_to_tensor,cast,int32
             print(step, 'num particles', pos.shape[0])
             if(prm_mask):
-                # mask = pos[:, 1] > min_y
+                mask = pos[:, 1] > min_y
+                mask = logical_and(mask,(pos[:, 2] > min_z))
+                mask = logical_and(mask,(pos[:, 2] < max_z))
+                mask = logical_and(mask,(pos[:, 0] > min_x))
+                mask = logical_and(mask,(pos[:, 0] < max_x))
+
+
+                model.mask=mask
                 print('[MASK]')
-                mask = pos[:, 0]  < 8 #需要保留的粒子
-                if np.count_nonzero(mask) < pos.shape[0]:
-                    pos = pos[mask]
-                    vel = vel[mask]
+                # mask = pos[:, 0]  < 8 #需要保留的粒子
+                # if np.count_nonzero(mask) < pos.shape[0]:
+                #     pos = pos[mask]
+                #     vel = vel[mask]
+            if(prm_moveOutPart):
+                if(scenejsonname=="streammultiobjsHorizon.json"):
+                    mask = pos[:, 0] > 21
+                    if np.count_nonzero(mask):
+                        print('moveOutPart..')
+                        temp=pos.cpu().numpy()
+                        temp[mask,0]=30
+                        temp[mask,1]=30
+                        temp[mask,2]=30
+                        pos=temp
+                else:
+                    assert(False)
+
+
+            if(prm_edit):
+             
+
+                mask = pos[:, 1]  > -2
+                mask2= vel[:, 1]  > 0.01
+          
+              
+
+                # print(mask.shape)
+                # print(mask2.shape)
+                # print(type(mask))
+
+                # print(mask.dtype)
+                # print(mask2.dtype)
+
+                
+                
+
+                mask=logical_and(mask,mask2)
+               
+              
+                print('--------mask part num-------------')
+                print(np.sum(cast(mask,int32).cpu().numpy()))
+                # mask= expand_dims(mask, axis=1)  
+                # mask = tile(mask, [1, 3])
+                print(mask.shape)#partnum 3
+
+                velnp=vel.cpu().numpy()
+                # posnp=pos.cpu().numpy()
+                velnp[mask.cpu().numpy(),1] *= 0.6
+                # vely=where(mask,np.zeros_like(vel[:,1]),vel[:,1])
+
+                # vel=vel.cpu().numpy()
+                # vel[:,1]=vely.cpu().numpy()
+
+                vel=convert_to_tensor(velnp)
+                # pos=convert_to_tensor(posnp)
+                
+
+
+                # print(x.shape)
+                # mask=pos[:,1]
+                # print(mask.shape)
+                # vel[:,1]=x
+
+                # vel[.cpu().numpy(),1]
+                # assert(False)
+
 
 
     timeperframe=(time.time()-starttime)/num_steps
     print('[mtimes]\t'+str(model.mtimes))
     print('[cost]\t'+str(timeperframe)+'sec per frame\t')
-    np.savez(output_dir + '.npz',
-        mat1=model.aenergy,\
-        mat2=model.adelta_energy,\
-        mat3=model.mtimes,
-        mat4=(model.morder_pointwise if prm_pointwise else model.morder),
-        mat5=model.adelta_energy2)
+    if(prm_continuerun):
+        pass
+        # data=np.load(output_dir + '.npz')
+        # mat1=data['mat1']
+        # mat2=data['mat2']
+        # mat3=data['mat3']
+        # mat4=data['mat4']
+        # mat5=data['mat5']
+        # mat6=data['mat6']
+        # mat1_add=np.array(model.aenergy)
+        # mat2_add=np.array(model.adelta_energy)
+        # mat3_add=np.array(model.mtimes)
+        # mat4_add=np.array(model.morder_pointwise if prm_pointwise else model.morder)
+        # mat5_add=np.array(model.adelta_energy2)
+        # mat6_add=np.array(model.acoff)
+
+        # print(mat1_add.shape)
+
+        # assert(False)
+
+        # np.savez('temp.npz',\
+        # mat1=np.concatenate((mat1, mat1_add), axis=0),\
+        # mat2=np.concatenate((mat2, mat2_add), axis=0),\
+        # mat3=np.concatenate((mat3, mat3_add), axis=0),\
+        # mat4=np.concatenate((mat4, mat4_add), axis=0),\
+        # mat5=np.concatenate((mat5, mat5_add), axis=0),\
+        # mat6=np.concatenate((mat6, mat6_add), axis=0)
+        
+        # )
+
+    else:
+
+        np.savez(output_dir + '.npz',
+            mat1=model.aenergy,\
+            mat2=model.adelta_energy,\
+            mat3=model.mtimes,
+            mat4=(model.morder_pointwise if prm_pointwise else model.morder),
+            mat5=model.adelta_energy2,
+            mat6=model.acoff,
+            mat7=model.acoff_area,
+            mat8=model.acoff_other,
+            mat9=model.aenergy_area,
+            mat10=model.aenergy_other,
+            mat11=model.apartnum_area,
+            mat12=model.agammahat,
+            mat13=model.agamma,
+            mat14=model.aenergymax,
+            mat15=model.aenergymin,
+            mat16=model.aenergypre,
+            mat17=model.agammahat2,
+            mat18= model.afmax,
+            mat19= model.afmin,
+            mat20=model.afratio,
+            mat21=model.afratioactual,
+            mat22=model.aeratio,
+            mat23=model.aeratioacual,
+            mat24=  model.aemin,
+            mat25=  model.aemax
+         
+            )
+            
         #know
 
 
@@ -593,7 +1484,8 @@ def main():
     with open(args.scene, 'r') as f:
         scene = json.load(f)
 
-    os.makedirs(args.output)
+    if(not prm_continuerun):
+        os.makedirs(args.output)
 
     if args.weights.endswith('.h5'):
         return run_sim_tf(trainscript_module, args.weights, scene,
