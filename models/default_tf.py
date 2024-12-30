@@ -1,5 +1,5 @@
 import tensorflow as tf
-
+import time
 
 from tuneCurve import *
 from util import getnpz
@@ -68,9 +68,10 @@ prm_horizon,\
 prmmixstable,\
 prmstableratio,\
 prmtune0,\
-prmtuneend
+prmtuneend,\
+prm_exportgap
 
-movetime=150
+
 
 
 
@@ -143,6 +144,10 @@ class MyParticleNetwork(tf.keras.Model):
         self.afratioactual=[]
         self.aeratio=[]
         self.aeratioacual=[]
+
+        self.infertime=0
+
+        self.prm_linear=prm_linear
 
 
         if(prm_horizon):
@@ -382,6 +387,9 @@ class MyParticleNetwork(tf.keras.Model):
         _vel2=vel2.numpy()
 
         #zxc 仅这一步用nn
+        
+        stm=time.time()
+
         pos_correction1 = self.compute_correction(
             pos2, vel2, feats, box, box_feats, fixed_radius_search_hash_table)
         pos_correction2=model2.compute_correction(
@@ -391,8 +399,11 @@ class MyParticleNetwork(tf.keras.Model):
         pos_correction4=model4.compute_correction(
             pos2, vel2, feats, box, box_feats, fixed_radius_search_hash_table)
 
+        self.infertime+=(time.time()-stm)
+
         global prmmixstable
         if(prmmixstable):
+            assert(False)
             pos_correction5=model5.compute_correction(
             pos2, vel2, feats, box, box_feats, fixed_radius_search_hash_table)
 
@@ -420,19 +431,23 @@ class MyParticleNetwork(tf.keras.Model):
 
 
         if(prm_sus):
-            movetime=320
-            assert(movetime>0)
+            sustime=650
 
-            print('[SUS]\t'+str(movetime))
-            if(step<=movetime):
+
+            print('[SUS]\t'+str(sustime))
+            if(step<=sustime):
+                print('[In sus]')
                 prmmixstable=0
                 prm_maxenergy=0
+                self.prm_linear=0
 
                 
                 
             else:
+                print('[sus end]')
                 prmmixstable=0
                 prm_maxenergy=0
+                self.prm_linear=1
 
                
                 
@@ -578,7 +593,8 @@ class MyParticleNetwork(tf.keras.Model):
         delta_energy3=np.sum(delta_energy_mat3)
         delta_energy4=np.sum(delta_energy_mat4)
       
-        if(prm_linear and (not prm_area)):
+
+        if(self.prm_linear and (not prm_area)):
             # tune=0.5
             # if(step>=300):
 
@@ -587,8 +603,10 @@ class MyParticleNetwork(tf.keras.Model):
             tune0=prmtune0
             tuneend=prmtuneend
             tune=x1(tune0=tune0,tuneend=tuneend,step=step,num_steps=num_steps)
-            if(step<=320):
-                tune=0.5
+
+
+
+                
             if(prm_customtune):
                 tune=np.load('tunecurve.npy')[step]
             #line
@@ -830,7 +848,7 @@ class MyParticleNetwork(tf.keras.Model):
 
         # print('[delta E]\t'+str(delta_energy[1-1]))
 
-        if(prm_maxenergy and not prm_linear):
+        if(prm_maxenergy and not self.prm_linear):
             pos_correction= pos_corrections[idxmax]   
             if(prmmixstable):
                 print('STABLE\t'+str(prmstableratio))
@@ -843,8 +861,13 @@ class MyParticleNetwork(tf.keras.Model):
             self.morder.append(idxmax)
             self.mtimes[idxmax]+=1
 
-        elif(not prm_maxenergy and not prm_linear):
+        elif(not prm_maxenergy and not self.prm_linear):
             pos_correction= pos_corrections[idxmin]
+            # if(step>=160):
+            # if(step>=150):
+            #     pos_correction= pos_corrections[2]
+            #     print('artifical 2')
+
             if(prmmixstable):
                 print('STABLE\t'+str(prmstableratio))
                 pos_correction=prmstableratio    *pos_correction5 +\
@@ -855,7 +878,7 @@ class MyParticleNetwork(tf.keras.Model):
             self.morder.append(idxmin)
             self.mtimes[idxmin]+=1
                      
-        if(prm_linear and not(prm_area)):
+        if(self.prm_linear and not(prm_area)):
             if(not prm_mlpexact):
                 # coff=np.random.dirichlet(np.array([1.0, 1.0, 1.0, 1.0]))  
                 # print(coff.shape)
@@ -864,6 +887,8 @@ class MyParticleNetwork(tf.keras.Model):
                 pos_corrections[1]*coff[0,1]+\
                 pos_corrections[2]*coff[0,2]+\
                 pos_corrections[3]*coff[0,3]
+
+           
 
             #EXACt
             else:
@@ -1020,7 +1045,7 @@ class MyParticleNetwork(tf.keras.Model):
                                     delta_energy2_area,\
                                     delta_energy3_area,\
                                     delta_energy4_area])
-            if(prm_linear):
+            if(self.prm_linear):
 
      
 
@@ -1067,7 +1092,7 @@ class MyParticleNetwork(tf.keras.Model):
                 one_tile=tf.convert_to_tensor(one_tile)
 
 
-            if(not prm_linear):
+            if(not self.prm_linear):
                 pos_correction=\
                 (one_tile-area_mask_tile)*(
                     pos_correction
@@ -1136,7 +1161,7 @@ class MyParticleNetwork(tf.keras.Model):
             ]
 
             )
-        elif(prm_area and (not prm_linear)):
+        elif(prm_area and (not self.prm_linear)):
             
             # exit(0)
             temp=\
@@ -1151,7 +1176,7 @@ class MyParticleNetwork(tf.keras.Model):
             self.adelta_energy.append(delta_energys[idxmax]/partnum)
         else:
             self.adelta_energy.append(delta_energys[idxmin]/partnum)
-        if(prm_linear):
+        if(self.prm_linear):
             if(prm_area):
                 self.acoff_area. append(coff_area)
                 self.acoff_other.append(coff_other)
@@ -1291,7 +1316,7 @@ class MyParticleNetwork(tf.keras.Model):
 
 
 
-        if(prm_linear):
+        if(self.prm_linear):
             print('[gamma]\t'+str(tune))
             self.agamma.append(tune)
             
@@ -1345,7 +1370,7 @@ class MyParticleNetwork(tf.keras.Model):
 
         _vel=vel    #is numpy
         partnum=pos.shape[0]
-        if(not prm_train):
+        if(not prm_train and not (prm_exportgap>1000) ):
             energy=getEnergy(vel=_vel,mask=self.mask,partnum=partnum)
             self.aenergy.append(energy)
             print('[energy]\t'+str(energy))
@@ -1360,14 +1385,19 @@ class MyParticleNetwork(tf.keras.Model):
         pos2, vel2 = self.integrate_pos_vel(pos, vel)
 
         #zxc 仅这一步用nn
+
+        stm=time.time()
+        
         pos_correction = self.compute_correction(
             pos2, vel2, feats, box, box_feats, fixed_radius_search_hash_table)
+        
+        self.infertime+=(time.time()-stm)
         
         # self.adelta_energy.append(np.sum(getDeltaEnergy(v=vel2,dv=pos_correction/self.timestep))/partnum)
         # print('[delta Energy]')
         # print(self.adelta_energy[-1])
 
-        if(not prm_train):
+        if(not prm_train and not (prm_exportgap>1000) ):
             gravity_mat=np.tile(np.array([0,-9.81,0]),(partnum,1))
         # self.adelta_energy2.append(np.sum(getDeltaEnergy2(
         #             dt=self.timestep,

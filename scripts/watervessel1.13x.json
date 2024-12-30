@@ -1,0 +1,49 @@
+{
+    "walls":[
+        {
+            "path":"../datasets/models/watervesselbox.obj",
+            "translation":[
+                0,
+                0,
+                0
+            ],
+            "scale":2.26
+
+        },
+		{
+            "objectId": 1,
+			"path": "../datasets/models/fisher.obj",
+			"translation": [6.328, 1.695, 10.17],
+            "scale":2.26,
+            "invert_normals":1,
+			"rotationAxis": [0, 0, 1],
+			"rotationAngle": 0,
+			"velocity": [0.0, 0.0, 0.0],
+			"density": 1000.0,
+			"color": [255, 255, 255], 
+			"isDynamic": false
+			
+		}
+
+
+        
+    ],
+    "fluids":[
+        {
+            "path":"../datasets/models/Box_001.obj",
+            "velocity":[
+                0.0,
+                0,
+                0.0
+            ],
+            "translation":[
+                0,
+                0,
+                0
+            ],
+            "start":0,
+            "stop":1,
+            "step":1
+        }
+    ]
+}

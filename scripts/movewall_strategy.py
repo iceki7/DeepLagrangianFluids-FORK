@@ -59,9 +59,9 @@ def boatdown(wallmoveidx,box):
 
 #自转
 def rotationself(wallmoveidx,box,center=tf.constant([0,0,0]),vel=1.0/40.0,axis=1,\
-partnum=-1):
+partnum=-1,ratio=1):
     
-    angle = tf.constant(np.pi * vel)  
+    angle = tf.constant(np.pi * vel)*ratio
 
     # 定义绕 y 轴的旋转矩阵
     if(axis==1):
